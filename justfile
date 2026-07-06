@@ -6,6 +6,9 @@ default:
 run:
     cargo run
 
+run_release:
+    cargo run --release
+
 test:
     cargo nextest run --no-tests=pass
 
