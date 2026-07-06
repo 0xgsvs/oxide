@@ -32,6 +32,8 @@ pub struct UpdateTaskRequest {
 }
 
 impl UpdateTaskRequest {
+    /// Returns `true` if `status` is unset or one of the allowed values.
+    #[must_use]
     pub fn status_is_valid(&self) -> bool {
         match &self.status {
             None => true,

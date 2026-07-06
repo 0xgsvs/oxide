@@ -6,6 +6,12 @@ pub struct Config {
     pub database_url: String,
 }
 
+/// Loads configuration from environment variables.
+///
+/// # Panics
+///
+/// Panics if `DATABASE_URL` is not set.
+#[must_use]
 pub fn load() -> Config {
     dotenv().ok();
 

@@ -15,6 +15,12 @@ pub struct ListTasksQuery {
     offset: Option<i64>,
 }
 
+/// Creates a new task.
+///
+/// # Panics
+///
+/// Panics if validation fails or the database query fails. This is temporary
+/// until centralized error handling is introduced.
 pub async fn create(State(pool): State<PgPool>, Json(req): Json<CreateTaskRequest>) -> Json<Task> {
     req.validate().expect("Validation failed");
 
@@ -38,6 +44,12 @@ pub async fn create(State(pool): State<PgPool>, Json(req): Json<CreateTaskReques
     Json(task)
 }
 
+/// Lists tasks with optional pagination.
+///
+/// # Panics
+///
+/// Panics if the database query fails. This is temporary until centralized
+/// error handling is introduced.
 pub async fn list(
     State(pool): State<PgPool>,
     Query(query): Query<ListTasksQuery>,
@@ -63,6 +75,12 @@ pub async fn list(
     Json(tasks)
 }
 
+/// Gets a single task by ID.
+///
+/// # Panics
+///
+/// Panics if the task is not found or the database query fails. This is
+/// temporary until centralized error handling is introduced.
 pub async fn get_by_id(State(pool): State<PgPool>, Path(id): Path<i32>) -> Json<Task> {
     let task = sqlx::query_as!(
         Task,
@@ -80,6 +98,12 @@ pub async fn get_by_id(State(pool): State<PgPool>, Path(id): Path<i32>) -> Json<
     Json(task)
 }
 
+/// Updates a task. Fields set to `None` are left unchanged.
+///
+/// # Panics
+///
+/// Panics if validation fails, the status is invalid, or the database query
+/// fails. This is temporary until centralized error handling is introduced.
 pub async fn update(
     State(pool): State<PgPool>,
     Path(id): Path<i32>,
@@ -114,6 +138,12 @@ pub async fn update(
     Json(task)
 }
 
+/// Deletes a task by ID.
+///
+/// # Panics
+///
+/// Panics if the database query fails. This is temporary until centralized
+/// error handling is introduced.
 pub async fn delete(State(pool): State<PgPool>, Path(id): Path<i32>) -> StatusCode {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
         .execute(&pool)
