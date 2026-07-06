@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use axum::{Router, routing::get};
 use routes::{
     health,
-    tasks::{create, get_by_id, list},
+    tasks::{create, delete as delete_task, get_by_id, list, update},
 };
 use tracing::info;
 
@@ -22,7 +22,10 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .route("/tasks", get(list).post(create))
-        .route("/tasks/{id}", get(get_by_id))
+        .route(
+            "/tasks/{id}",
+            get(get_by_id).patch(update).delete(delete_task),
+        )
         .with_state(pool);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));

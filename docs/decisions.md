@@ -45,3 +45,8 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 - Decision: `sqlx-cli`.
 - Why: Native companion to SQLx. Migrations are plain SQL files in `migrations/`, version-controlled and runnable offline.
+
+### Input validation
+
+- Decision: `validator` with explicit `validate()` calls in handlers.
+- Why: Standard Rust validation library with derive macros. Kept explicit for now instead of an Axum extractor wrapper so the learning path is clear. Error responses will be centralized later.
