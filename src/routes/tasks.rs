@@ -8,6 +8,7 @@ use validator::Validate;
 
 use crate::{
     AppState,
+    auth::AuthUser,
     models::{CreateTaskRequest, Task, TaskAssignedEvent, UpdateTaskRequest},
 };
 
@@ -24,6 +25,7 @@ pub struct ListTasksQuery {
 /// Panics if validation fails or the database query fails. This is temporary
 /// until centralized error handling is introduced.
 pub async fn create(
+    AuthUser(claims): AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> Json<Task> {
@@ -39,8 +41,8 @@ pub async fn create(
         req.workspace_id,
         req.title,
         req.description,
-        req.assignee_id,
-        req.created_by
+        req.assignee_id.or(Some(claims.sub)),
+        claims.sub,
     )
     .fetch_one(&state.pool)
     .await
@@ -66,6 +68,7 @@ pub async fn create(
 /// Panics if the database query fails. This is temporary until centralized
 /// error handling is introduced.
 pub async fn list(
+    AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Json<Vec<Task>> {
@@ -96,7 +99,11 @@ pub async fn list(
 ///
 /// Panics if the task is not found or the database query fails. This is
 /// temporary until centralized error handling is introduced.
-pub async fn get_by_id(State(state): State<AppState>, Path(id): Path<i32>) -> Json<Task> {
+pub async fn get_by_id(
+    AuthUser(_claims): AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> Json<Task> {
     let task = sqlx::query_as!(
         Task,
         r#"
@@ -120,6 +127,7 @@ pub async fn get_by_id(State(state): State<AppState>, Path(id): Path<i32>) -> Js
 /// Panics if validation fails, the status is invalid, or the database query
 /// fails. This is temporary until centralized error handling is introduced.
 pub async fn update(
+    AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
@@ -169,7 +177,11 @@ pub async fn update(
 ///
 /// Panics if the database query fails. This is temporary until centralized
 /// error handling is introduced.
-pub async fn delete(State(state): State<AppState>, Path(id): Path<i32>) -> StatusCode {
+pub async fn delete(
+    AuthUser(_claims): AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> StatusCode {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
         .execute(&state.pool)
         .await

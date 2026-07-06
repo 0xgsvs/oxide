@@ -67,3 +67,29 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 - Decision: `tower_governor` with `GlobalKeyExtractor` for now.
 - Why: Easy Tower integration. Per-IP/key extractors require connect info that is hard to provide in tests and not meaningful without authentication. Will switch to per-user limiting after Phase 3 auth.
+
+## Phase 3
+
+### Authentication approach
+
+- Decision: JWT with stateless tokens. Password hashing with Argon2. Auth via `FromRequestParts` extractor.
+- Why: JWT avoids server-side session storage. Argon2 is the standard password hashing algorithm.
+
+### Password hashing
+
+- Decision: `argon2` crate with default features.
+- Why: Pure Rust implementation of Argon2id, salt generated automatically.
+
+### JWT
+
+- Decision: `jsonwebtoken` with `rust_crypto` feature.
+- Why: Standard Rust JWT library. Tokens expire after 24 hours.
+
+### Authorization
+
+- Decision: Use Axum's `FromRequestParts` extractor (`AuthUser`) instead of a Tower middleware layer.
+- Why: Handler-level control means routes like `/auth/register` are unauthenticated while `/tasks` require a valid token. No complex middleware chains.
+
+### Role-based access control
+
+- Not yet implemented at endpoint level. The `Claims` struct carries the role. Endpoint-level enforcement will be added when role-specific logic is needed.

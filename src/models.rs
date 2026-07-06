@@ -19,7 +19,6 @@ pub struct CreateTaskRequest {
     pub title: String,
     pub description: Option<String>,
     pub assignee_id: Option<i32>,
-    pub created_by: i32,
 }
 
 #[derive(Deserialize, Validate)]

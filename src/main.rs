@@ -16,6 +16,7 @@ async fn main() {
 
     let state = AppState {
         pool,
+        jwt_secret: config.jwt_secret,
         task_notifier,
     };
     let app = create_app(state);

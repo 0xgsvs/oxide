@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod models;
@@ -13,11 +14,12 @@ use tower_governor::{
     GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
 };
 
-use crate::models::TaskAssignedEvent;
+use crate::{auth::auth_routes, models::TaskAssignedEvent};
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub jwt_secret: String,
     pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
 }
 
@@ -31,6 +33,7 @@ pub fn create_app(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .merge(auth_routes())
         .route("/tasks", get(tasks::list).post(tasks::create))
         .route(
             "/tasks/{id}",
