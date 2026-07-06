@@ -41,3 +41,9 @@ impl UpdateTaskRequest {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct TaskAssignedEvent {
+    pub task_id: i32,
+    pub assignee_id: i32,
+}

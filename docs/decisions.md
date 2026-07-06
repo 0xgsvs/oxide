@@ -55,3 +55,15 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 - Decision: `#[sqlx::test]` + `tower::ServiceExt::oneshot`.
 - Why: `#[sqlx::test]` creates an isolated test database per test and runs migrations automatically. `ServiceExt::oneshot` tests the Axum router without binding a real port.
+
+## Phase 2
+
+### Async runtime patterns
+
+- Decision: Use Tokio's `mpsc` channel for background jobs and `tokio::signal` for graceful shutdown.
+- Why: Native Tokio primitives. No extra dependencies for the core async patterns.
+
+### Rate limiting
+
+- Decision: `tower_governor` with `GlobalKeyExtractor` for now.
+- Why: Easy Tower integration. Per-IP/key extractors require connect info that is hard to provide in tests and not meaningful without authentication. Will switch to per-user limiting after Phase 3 auth.

@@ -3,11 +3,32 @@ pub mod db;
 pub mod models;
 pub mod routes;
 
+use std::sync::Arc;
+
 use axum::{Router, routing::get};
 use routes::{health, tasks};
 use sqlx::PgPool;
+use tokio::sync::mpsc;
+use tower_governor::{
+    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
+};
 
-pub fn create_app(pool: PgPool) -> Router {
+use crate::models::TaskAssignedEvent;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
+}
+
+pub fn create_app(state: AppState) -> Router {
+    let governor_conf = GovernorConfigBuilder::default()
+        .key_extractor(GlobalKeyExtractor)
+        .per_second(10)
+        .burst_size(20)
+        .finish()
+        .expect("Failed to build rate limiter config");
+
     Router::new()
         .route("/health", get(health))
         .route("/tasks", get(tasks::list).post(tasks::create))
@@ -17,5 +38,16 @@ pub fn create_app(pool: PgPool) -> Router {
                 .patch(tasks::update)
                 .delete(tasks::delete),
         )
-        .with_state(pool)
+        .with_state(state)
+        .layer(GovernorLayer::new(Arc::new(governor_conf)))
+}
+
+pub async fn task_notification_worker(mut receiver: mpsc::Receiver<TaskAssignedEvent>) {
+    while let Some(event) = receiver.recv().await {
+        tracing::info!(
+            task_id = event.task_id,
+            assignee_id = event.assignee_id,
+            "sending task assignment notification"
+        );
+    }
 }

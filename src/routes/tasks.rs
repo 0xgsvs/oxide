@@ -4,10 +4,12 @@ use axum::{
     http::StatusCode,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
 use validator::Validate;
 
-use crate::models::{CreateTaskRequest, Task, UpdateTaskRequest};
+use crate::{
+    AppState,
+    models::{CreateTaskRequest, Task, TaskAssignedEvent, UpdateTaskRequest},
+};
 
 #[derive(Deserialize)]
 pub struct ListTasksQuery {
@@ -21,7 +23,10 @@ pub struct ListTasksQuery {
 ///
 /// Panics if validation fails or the database query fails. This is temporary
 /// until centralized error handling is introduced.
-pub async fn create(State(pool): State<PgPool>, Json(req): Json<CreateTaskRequest>) -> Json<Task> {
+pub async fn create(
+    State(state): State<AppState>,
+    Json(req): Json<CreateTaskRequest>,
+) -> Json<Task> {
     req.validate().expect("Validation failed");
 
     let task = sqlx::query_as!(
@@ -37,9 +42,19 @@ pub async fn create(State(pool): State<PgPool>, Json(req): Json<CreateTaskReques
         req.assignee_id,
         req.created_by
     )
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .unwrap();
+
+    if let Some(assignee_id) = req.assignee_id {
+        let _ = state
+            .task_notifier
+            .send(TaskAssignedEvent {
+                task_id: task.id,
+                assignee_id,
+            })
+            .await;
+    }
 
     Json(task)
 }
@@ -51,7 +66,7 @@ pub async fn create(State(pool): State<PgPool>, Json(req): Json<CreateTaskReques
 /// Panics if the database query fails. This is temporary until centralized
 /// error handling is introduced.
 pub async fn list(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Json<Vec<Task>> {
     let limit = query.limit.unwrap_or(20);
@@ -68,7 +83,7 @@ pub async fn list(
         limit,
         offset
     )
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .unwrap();
 
@@ -81,7 +96,7 @@ pub async fn list(
 ///
 /// Panics if the task is not found or the database query fails. This is
 /// temporary until centralized error handling is introduced.
-pub async fn get_by_id(State(pool): State<PgPool>, Path(id): Path<i32>) -> Json<Task> {
+pub async fn get_by_id(State(state): State<AppState>, Path(id): Path<i32>) -> Json<Task> {
     let task = sqlx::query_as!(
         Task,
         r#"
@@ -91,7 +106,7 @@ pub async fn get_by_id(State(pool): State<PgPool>, Path(id): Path<i32>) -> Json<
         "#,
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .unwrap();
 
@@ -105,7 +120,7 @@ pub async fn get_by_id(State(pool): State<PgPool>, Path(id): Path<i32>) -> Json<
 /// Panics if validation fails, the status is invalid, or the database query
 /// fails. This is temporary until centralized error handling is introduced.
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Json<Task> {
@@ -131,9 +146,19 @@ pub async fn update(
         req.status,
         req.assignee_id
     )
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .unwrap();
+
+    if let Some(assignee_id) = req.assignee_id {
+        let _ = state
+            .task_notifier
+            .send(TaskAssignedEvent {
+                task_id: task.id,
+                assignee_id,
+            })
+            .await;
+    }
 
     Json(task)
 }
@@ -144,9 +169,9 @@ pub async fn update(
 ///
 /// Panics if the database query fails. This is temporary until centralized
 /// error handling is introduced.
-pub async fn delete(State(pool): State<PgPool>, Path(id): Path<i32>) -> StatusCode {
+pub async fn delete(State(state): State<AppState>, Path(id): Path<i32>) -> StatusCode {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&state.pool)
         .await
         .unwrap();
 

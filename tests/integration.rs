@@ -3,12 +3,19 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use oxide::{AppState, create_app, models::TaskAssignedEvent};
 use serde_json::json;
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 use tower::ServiceExt;
 
-fn app(pool: PgPool) -> Router {
-    oxide::create_app(pool)
+fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
+    let (task_notifier, task_receiver) = mpsc::channel(100);
+    let state = AppState {
+        pool,
+        task_notifier,
+    };
+    (create_app(state), task_receiver)
 }
 
 async fn seed_user_and_workspace(pool: &PgPool) {
@@ -35,7 +42,9 @@ async fn response_body_json(response: axum::response::Response) -> serde_json::V
 
 #[sqlx::test]
 async fn health_check(pool: PgPool) {
-    let response = app(pool)
+    let (app, _rx) = app(pool);
+
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/health")
@@ -55,7 +64,9 @@ async fn health_check(pool: PgPool) {
 async fn create_task(pool: PgPool) {
     seed_user_and_workspace(&pool).await;
 
-    let response = app(pool)
+    let (app, _rx) = app(pool);
+
+    let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -77,6 +88,38 @@ async fn create_task(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn create_task_sends_assignment_notification(pool: PgPool) {
+    seed_user_and_workspace(&pool).await;
+
+    let (app, mut rx) = app(pool);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tasks")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "workspace_id": 1,
+                        "title": "Assigned task",
+                        "created_by": 1,
+                        "assignee_id": 1
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let event = rx.recv().await.expect("expected assignment notification");
+    assert_eq!(event.assignee_id, 1);
+}
+
+#[sqlx::test]
 async fn list_tasks(pool: PgPool) {
     seed_user_and_workspace(&pool).await;
 
@@ -85,7 +128,9 @@ async fn list_tasks(pool: PgPool) {
         .await
         .unwrap();
 
-    let response = app(pool)
+    let (app, _rx) = app(pool);
+
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/tasks")
@@ -110,7 +155,9 @@ async fn update_task(pool: PgPool) {
         .await
         .unwrap();
 
-    let response = app(pool)
+    let (app, _rx) = app(pool);
+
+    let response = app
         .oneshot(
             Request::builder()
                 .method("PATCH")
@@ -140,7 +187,9 @@ async fn delete_task(pool: PgPool) {
         .await
         .unwrap();
 
-    let response = app(pool)
+    let (app, _rx) = app(pool);
+
+    let response = app
         .oneshot(
             Request::builder()
                 .method("DELETE")
