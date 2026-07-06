@@ -38,10 +38,10 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 ### Database driver / ORM
 
-- Decision:
-- Why:
+- Decision: SQLx with PostgreSQL.
+- Why: Async-native, compile-time checked queries, and forces learning real SQL instead of hiding it behind an ORM DSL.
 
 ### Migration tool
 
-- Decision:
-- Why:
+- Decision: `sqlx-cli`.
+- Why: Native companion to SQLx. Migrations are plain SQL files in `migrations/`, version-controlled and runnable offline.
