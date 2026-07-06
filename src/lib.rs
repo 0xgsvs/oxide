@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cache;
 pub mod config;
 pub mod db;
 pub mod models;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
     pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
+    pub redis_con: redis::aio::MultiplexedConnection,
 }
 
 pub fn create_app(state: AppState) -> Router {

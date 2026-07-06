@@ -93,3 +93,29 @@ Record each significant decision here. One or two sentences is enough. The goal 
 ### Role-based access control
 
 - Not yet implemented at endpoint level. The `Claims` struct carries the role. Endpoint-level enforcement will be added when role-specific logic is needed.
+
+## Phase 4
+
+### Caching approach
+
+- Decision: Redis with cache-aside pattern.
+- Why: Task reads are frequent and cheap to cache. Cache-aside is simple: read from cache first, fall back to DB, then populate cache. Invalidation on write (create/update/delete) keeps data fresh.
+
+### Redis library
+
+- Decision: `redis` crate v1.3.0 with `tokio-comp` feature.
+- Why: Standard Rust Redis driver with direct async support via `MultiplexedConnection`.
+
+### Cache keys & TTL
+
+- `task:{id}`: single task, TTL 60s, invalidated on PATCH/DELETE.
+- `tasks:list:{limit}:{offset}`: paginated list, TTL 30s, invalidated on CREATE/PATCH/DELETE.
+
+### Infrastructure
+
+- Decision: Docker Compose (`compose.yml`) for both PostgreSQL and Redis.
+- Why: Single `docker compose up` starts the full stack. Redis via compose, Postgres via compose (optional, profile `full`).
+
+### Benchmarking
+
+- Not yet performed. Requires `oha`, `wrk`, or `hyperfine` to compare latency before/after.

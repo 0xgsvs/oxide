@@ -11,6 +11,12 @@ async fn main() {
     let config = config::load();
     let pool = db::create_pool(&config.database_url).await;
 
+    let redis_client = redis::Client::open(config.redis_url).expect("Invalid REDIS_URL");
+    let redis_con = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Failed to connect to Redis");
+
     let (task_notifier, task_receiver) = mpsc::channel(100);
     tokio::spawn(task_notification_worker(task_receiver));
 
@@ -18,6 +24,7 @@ async fn main() {
         pool,
         jwt_secret: config.jwt_secret,
         task_notifier,
+        redis_con,
     };
     let app = create_app(state);
 

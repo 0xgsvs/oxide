@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Task {
     pub id: i32,
     pub workspace_id: i32,

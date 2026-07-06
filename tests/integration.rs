@@ -9,12 +9,19 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tower::ServiceExt;
 
-fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
+async fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
+    let client = redis::Client::open("redis://127.0.0.1:6379").expect("Invalid REDIS_URL");
+    let redis_con = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Failed to connect to Redis");
+
     let (task_notifier, task_receiver) = mpsc::channel(100);
     let state = AppState {
         pool,
         jwt_secret: "test-secret".to_string(),
         task_notifier,
+        redis_con,
     };
     (create_app(state), task_receiver)
 }
@@ -71,7 +78,7 @@ async fn register_user(app: &Router) -> String {
 
 #[sqlx::test]
 async fn health_check(pool: PgPool) {
-    let (app, _rx) = app(pool);
+    let (app, _rx) = app(pool).await;
     let (status, body) = request_json(&app, "GET", "/health", json!(null), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
@@ -79,7 +86,7 @@ async fn health_check(pool: PgPool) {
 
 #[sqlx::test]
 async fn auth_register_and_login(pool: PgPool) {
-    let (app, _rx) = app(pool);
+    let (app, _rx) = app(pool).await;
 
     let (status, body) = request_json(
         &app,
@@ -117,7 +124,7 @@ async fn auth_register_and_login(pool: PgPool) {
 
 #[sqlx::test]
 async fn tasks_require_auth(pool: PgPool) {
-    let (app, _rx) = app(pool);
+    let (app, _rx) = app(pool).await;
 
     let status = request_empty(&app, "GET", "/tasks", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -136,7 +143,7 @@ async fn tasks_require_auth(pool: PgPool) {
 #[sqlx::test]
 async fn create_and_list_tasks(pool: PgPool) {
     let pool_ref = pool.clone();
-    let (app, _rx) = app(pool);
+    let (app, _rx) = app(pool).await;
     let token = register_user(&app).await;
 
     sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")
@@ -163,7 +170,7 @@ async fn create_and_list_tasks(pool: PgPool) {
 #[sqlx::test]
 async fn create_task_sends_assignment_notification(pool: PgPool) {
     let pool_ref = pool.clone();
-    let (app, mut rx) = app(pool);
+    let (app, mut rx) = app(pool).await;
     let token = register_user(&app).await;
 
     sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")
@@ -188,7 +195,7 @@ async fn create_task_sends_assignment_notification(pool: PgPool) {
 #[sqlx::test]
 async fn update_and_delete_task(pool: PgPool) {
     let pool_ref = pool.clone();
-    let (app, _rx) = app(pool);
+    let (app, _rx) = app(pool).await;
     let token = register_user(&app).await;
 
     sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")

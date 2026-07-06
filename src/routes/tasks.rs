@@ -9,6 +9,7 @@ use validator::Validate;
 use crate::{
     AppState,
     auth::AuthUser,
+    cache,
     models::{CreateTaskRequest, Task, TaskAssignedEvent, UpdateTaskRequest},
 };
 
@@ -19,11 +20,6 @@ pub struct ListTasksQuery {
 }
 
 /// Creates a new task.
-///
-/// # Panics
-///
-/// Panics if validation fails or the database query fails. This is temporary
-/// until centralized error handling is introduced.
 pub async fn create(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
@@ -48,6 +44,10 @@ pub async fn create(
     .await
     .unwrap();
 
+    // Invalidate task list cache
+    let mut con = state.redis_con.clone();
+    cache::del(&mut con, &[cache::TASK_LIST_KEY]).await;
+
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
             .task_notifier
@@ -62,11 +62,6 @@ pub async fn create(
 }
 
 /// Lists tasks with optional pagination.
-///
-/// # Panics
-///
-/// Panics if the database query fails. This is temporary until centralized
-/// error handling is introduced.
 pub async fn list(
     AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
@@ -74,7 +69,18 @@ pub async fn list(
 ) -> Json<Vec<Task>> {
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
+    let cache_key = format!("{}:{}:{}", cache::TASK_LIST_KEY, limit, offset);
 
+    // Try cache
+    let mut con = state.redis_con.clone();
+    if let Some(Ok(tasks)) = cache::get_string(&mut con, &cache_key)
+        .await
+        .map(|cached| serde_json::from_str::<Vec<Task>>(&cached))
+    {
+        return Json(tasks);
+    }
+
+    // Cache miss — query DB
     let tasks = sqlx::query_as!(
         Task,
         r#"
@@ -90,20 +96,38 @@ pub async fn list(
     .await
     .unwrap();
 
+    // Store in cache
+    if let Ok(json) = serde_json::to_string(&tasks) {
+        cache::set_string(
+            &mut con,
+            &cache_key,
+            &json,
+            std::time::Duration::from_secs(30),
+        )
+        .await;
+    }
+
     Json(tasks)
 }
 
 /// Gets a single task by ID.
-///
-/// # Panics
-///
-/// Panics if the task is not found or the database query fails. This is
-/// temporary until centralized error handling is introduced.
 pub async fn get_by_id(
     AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Json<Task> {
+    let cache_key = cache::task_key(id);
+
+    // Try cache
+    let mut con = state.redis_con.clone();
+    if let Some(Ok(task)) = cache::get_string(&mut con, &cache_key)
+        .await
+        .map(|cached| serde_json::from_str::<Task>(&cached))
+    {
+        return Json(task);
+    }
+
+    // Cache miss — query DB
     let task = sqlx::query_as!(
         Task,
         r#"
@@ -117,15 +141,21 @@ pub async fn get_by_id(
     .await
     .unwrap();
 
+    // Store in cache
+    if let Ok(json) = serde_json::to_string(&task) {
+        cache::set_string(
+            &mut con,
+            &cache_key,
+            &json,
+            std::time::Duration::from_secs(60),
+        )
+        .await;
+    }
+
     Json(task)
 }
 
-/// Updates a task. Fields set to `None` are left unchanged.
-///
-/// # Panics
-///
-/// Panics if validation fails, the status is invalid, or the database query
-/// fails. This is temporary until centralized error handling is introduced.
+/// Updates a task.
 pub async fn update(
     AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
@@ -158,6 +188,10 @@ pub async fn update(
     .await
     .unwrap();
 
+    // Invalidate cache
+    let mut con = state.redis_con.clone();
+    cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
+
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
             .task_notifier
@@ -172,11 +206,6 @@ pub async fn update(
 }
 
 /// Deletes a task by ID.
-///
-/// # Panics
-///
-/// Panics if the database query fails. This is temporary until centralized
-/// error handling is introduced.
 pub async fn delete(
     AuthUser(_claims): AuthUser,
     State(state): State<AppState>,
@@ -188,8 +217,12 @@ pub async fn delete(
         .unwrap();
 
     if result.rows_affected() == 0 {
-        StatusCode::NOT_FOUND
-    } else {
-        StatusCode::NO_CONTENT
+        return StatusCode::NOT_FOUND;
     }
+
+    // Invalidate cache
+    let mut con = state.redis_con.clone();
+    cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
+
+    StatusCode::NO_CONTENT
 }
