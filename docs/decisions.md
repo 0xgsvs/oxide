@@ -50,3 +50,8 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 - Decision: `validator` with explicit `validate()` calls in handlers.
 - Why: Standard Rust validation library with derive macros. Kept explicit for now instead of an Axum extractor wrapper so the learning path is clear. Error responses will be centralized later.
+
+### Integration testing
+
+- Decision: `#[sqlx::test]` + `tower::ServiceExt::oneshot`.
+- Why: `#[sqlx::test]` creates an isolated test database per test and runs migrations automatically. `ServiceExt::oneshot` tests the Axum router without binding a real port.
