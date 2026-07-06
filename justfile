@@ -7,7 +7,7 @@ run:
     cargo run
 
 test:
-    cargo test
+    cargo nextest run
 
 fmt:
     cargo fmt

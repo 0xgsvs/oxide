@@ -36,7 +36,7 @@ Each requirement from the brief becomes a module you implement yourself:
 - [ ] Add structured logging with `tracing`.
 - [ ] Write a small `justfile` or `Makefile` for `run`, `test`, `fmt`, `lint`.
 
-**Checkpoint:** `curl http://localhost:3000/health` returns JSON. No database yet.
+**Checkpoint:** `xh http://localhost:3000/health` returns JSON. No database yet.
 
 ### Phase 1: Core API + Database
 
@@ -48,7 +48,7 @@ Each requirement from the brief becomes a module you implement yourself:
 - [ ] Use connection pooling.
 - [ ] Write integration tests against a real test database.
 
-**Checkpoint:** Full task CRUD works through `curl` and tests pass.
+**Checkpoint:** Full task CRUD works through `xh` and tests pass.
 
 ### Phase 2: Async + Concurrency
 

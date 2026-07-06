@@ -24,6 +24,16 @@ Record each significant decision here. One or two sentences is enough. The goal 
 - Decision: `justfile`.
 - Why: `just` is purpose-built for project tasks (dependencies, recipe args, shell completion). `mise` _can_ run tasks, but that is a secondary feature; its main job is toolchain version management. If you already use `mise` everywhere and want one less tool, `mise.toml` tasks are perfectly valid — just less common in Rust projects.
 
+### HTTP client
+
+- Decision: `xh`.
+- Why: Simpler syntax and better output formatting than `curl` for manual API testing.
+
+### Test runner
+
+- Decision: `cargo nextest`.
+- Why: Faster, clearer output, and better handling of async tests than the default `cargo test`.
+
 ## Phase 1
 
 ### Database driver / ORM
