@@ -1,5 +1,6 @@
-use redis::AsyncCommands;
 use std::time::Duration;
+
+use redis::AsyncCommands;
 
 /// Cache key prefix for task lookups.
 const TASK_KEY_PREFIX: &str = "task:";
@@ -22,10 +23,7 @@ pub async fn set_string(
 }
 
 /// Get a cache entry. Returns `None` if missing.
-pub async fn get_string(
-    con: &mut redis::aio::MultiplexedConnection,
-    key: &str,
-) -> Option<String> {
+pub async fn get_string(con: &mut redis::aio::MultiplexedConnection, key: &str) -> Option<String> {
     let mut con = con.clone();
     con.get(key).await.ok()
 }
@@ -37,6 +35,7 @@ pub async fn del(con: &mut redis::aio::MultiplexedConnection, keys: &[&str]) {
 }
 
 /// Build a task cache key from its ID.
+#[must_use]
 pub fn task_key(id: i32) -> String {
     format!("{TASK_KEY_PREFIX}{id}")
 }

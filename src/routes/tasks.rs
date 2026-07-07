@@ -4,28 +4,31 @@ use axum::{
     http::StatusCode,
 };
 use serde::Deserialize;
+use tracing::instrument;
 use validator::Validate;
 
 use crate::{
     AppState,
     auth::AuthUser,
     cache,
+    error::AppError,
     models::{CreateTaskRequest, Task, TaskAssignedEvent, UpdateTaskRequest},
 };
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ListTasksQuery {
     limit: Option<i64>,
     offset: Option<i64>,
 }
 
 /// Creates a new task.
+#[instrument(skip(state, req), fields(task.title = %req.title))]
 pub async fn create(
     AuthUser(claims): AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
-) -> Json<Task> {
-    req.validate().expect("Validation failed");
+) -> Result<Json<Task>, AppError> {
+    req.validate().map_err(AppError::Validation)?;
 
     let task = sqlx::query_as!(
         Task,
@@ -41,10 +44,8 @@ pub async fn create(
         claims.sub,
     )
     .fetch_one(&state.pool)
-    .await
-    .unwrap();
+    .await?;
 
-    // Invalidate task list cache
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[cache::TASK_LIST_KEY]).await;
 
@@ -58,29 +59,28 @@ pub async fn create(
             .await;
     }
 
-    Json(task)
+    Ok(Json(task))
 }
 
 /// Lists tasks with optional pagination.
+#[instrument(skip(state))]
 pub async fn list(
-    AuthUser(_claims): AuthUser,
+    AuthUser(_): AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
-) -> Json<Vec<Task>> {
+) -> Result<Json<Vec<Task>>, AppError> {
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
     let cache_key = format!("{}:{}:{}", cache::TASK_LIST_KEY, limit, offset);
 
-    // Try cache
     let mut con = state.redis_con.clone();
     if let Some(Ok(tasks)) = cache::get_string(&mut con, &cache_key)
         .await
         .map(|cached| serde_json::from_str::<Vec<Task>>(&cached))
     {
-        return Json(tasks);
+        return Ok(Json(tasks));
     }
 
-    // Cache miss — query DB
     let tasks = sqlx::query_as!(
         Task,
         r#"
@@ -93,10 +93,8 @@ pub async fn list(
         offset
     )
     .fetch_all(&state.pool)
-    .await
-    .unwrap();
+    .await?;
 
-    // Store in cache
     if let Ok(json) = serde_json::to_string(&tasks) {
         cache::set_string(
             &mut con,
@@ -107,27 +105,26 @@ pub async fn list(
         .await;
     }
 
-    Json(tasks)
+    Ok(Json(tasks))
 }
 
 /// Gets a single task by ID.
+#[instrument(skip(state))]
 pub async fn get_by_id(
-    AuthUser(_claims): AuthUser,
+    AuthUser(_): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
-) -> Json<Task> {
+) -> Result<Json<Task>, AppError> {
     let cache_key = cache::task_key(id);
 
-    // Try cache
     let mut con = state.redis_con.clone();
     if let Some(Ok(task)) = cache::get_string(&mut con, &cache_key)
         .await
         .map(|cached| serde_json::from_str::<Task>(&cached))
     {
-        return Json(task);
+        return Ok(Json(task));
     }
 
-    // Cache miss — query DB
     let task = sqlx::query_as!(
         Task,
         r#"
@@ -137,11 +134,10 @@ pub async fn get_by_id(
         "#,
         id
     )
-    .fetch_one(&state.pool)
-    .await
-    .unwrap();
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("Task {id} not found")))?;
 
-    // Store in cache
     if let Ok(json) = serde_json::to_string(&task) {
         cache::set_string(
             &mut con,
@@ -152,18 +148,24 @@ pub async fn get_by_id(
         .await;
     }
 
-    Json(task)
+    Ok(Json(task))
 }
 
 /// Updates a task.
+#[instrument(skip(state, req))]
 pub async fn update(
-    AuthUser(_claims): AuthUser,
+    AuthUser(_): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
-) -> Json<Task> {
-    req.validate().expect("Validation failed");
-    assert!(req.status_is_valid(), "Invalid status");
+) -> Result<Json<Task>, AppError> {
+    req.validate().map_err(AppError::Validation)?;
+
+    if !req.status_is_valid() {
+        return Err(AppError::BadRequest(
+            "Invalid status: must be todo, in_progress, or done",
+        ));
+    }
 
     let task = sqlx::query_as!(
         Task,
@@ -184,11 +186,10 @@ pub async fn update(
         req.status,
         req.assignee_id
     )
-    .fetch_one(&state.pool)
-    .await
-    .unwrap();
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("Task {id} not found")))?;
 
-    // Invalidate cache
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
 
@@ -202,27 +203,26 @@ pub async fn update(
             .await;
     }
 
-    Json(task)
+    Ok(Json(task))
 }
 
 /// Deletes a task by ID.
+#[instrument(skip(state))]
 pub async fn delete(
-    AuthUser(_claims): AuthUser,
+    AuthUser(_): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
-) -> StatusCode {
+) -> Result<StatusCode, AppError> {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
         .execute(&state.pool)
-        .await
-        .unwrap();
+        .await?;
 
     if result.rows_affected() == 0 {
-        return StatusCode::NOT_FOUND;
+        return Err(AppError::NotFound(format!("Task {id} not found")));
     }
 
-    // Invalidate cache
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
 
-    StatusCode::NO_CONTENT
+    Ok(StatusCode::NO_CONTENT)
 }

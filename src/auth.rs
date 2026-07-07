@@ -1,14 +1,15 @@
 use axum::{
     Json, Router,
     extract::{FromRequestParts, State},
-    http::{StatusCode, request::Parts},
+    http::request::Parts,
     routing::post,
 };
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
-use crate::AppState;
+use crate::{AppState, error::AppError};
 
 /// Claims stored in the JWT.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,7 +22,7 @@ pub struct Claims {
 }
 
 /// Request body for login.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
@@ -37,7 +38,7 @@ pub struct AuthResponse {
 }
 
 /// Request body for registration.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
@@ -48,8 +49,9 @@ pub struct RegisterRequest {
 pub struct AuthUser(pub Claims);
 
 impl FromRequestParts<AppState> for AuthUser {
-    type Rejection = (StatusCode, Json<serde_json::Value>);
+    type Rejection = AppError;
 
+    #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
@@ -59,34 +61,21 @@ impl FromRequestParts<AppState> for AuthUser {
             .get("Authorization")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
-            .ok_or_else(|| make_401("Missing authorization token"))?;
+            .ok_or_else(|| AppError::Unauthorized("Missing authorization token"))?;
 
         let token_data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
             &Validation::default(),
         )
-        .map_err(|_| make_401("Invalid or expired token"))?;
+        .map_err(|_| AppError::Unauthorized("Invalid or expired token"))?;
 
         Ok(AuthUser(token_data.claims))
     }
 }
 
-fn make_401(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({"error": msg})),
-    )
-}
-
-fn make_400(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(serde_json::json!({"error": msg})),
-    )
-}
-
 /// Hash a password using Argon2.
+#[must_use]
 pub fn hash_password(password: &str) -> String {
     use argon2::password_hash::PasswordHasher;
 
@@ -98,12 +87,12 @@ pub fn hash_password(password: &str) -> String {
 }
 
 /// Verify a password against an Argon2 hash. Returns `true` if valid.
+#[must_use]
 pub fn verify_password(password: &str, hash: &str) -> bool {
     use argon2::password_hash::{PasswordVerifier, phc::PasswordHash};
 
-    let parsed_hash = match PasswordHash::new(hash) {
-        Ok(h) => h,
-        Err(_) => return false,
+    let Ok(parsed_hash) = PasswordHash::new(hash) else {
+        return false;
     };
     let argon2 = argon2::Argon2::default();
     argon2
@@ -131,12 +120,13 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
 }
 
 /// POST /auth/register
+#[instrument(skip(state))]
 async fn register_handler(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
-) -> Result<Json<AuthResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<AuthResponse>, AppError> {
     if req.email.is_empty() || req.password.is_empty() {
-        return Err(make_400("Email and password are required"));
+        return Err(AppError::BadRequest("Email and password are required"));
     }
 
     let password_hash = hash_password(&req.password);
@@ -154,12 +144,7 @@ async fn register_handler(
     )
     .fetch_one(&state.pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": "Email already exists"})),
-        )
-    })?;
+    .map_err(|_| AppError::Conflict("Email already exists"))?;
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
     Ok(Json(AuthResponse {
@@ -171,21 +156,21 @@ async fn register_handler(
 }
 
 /// POST /auth/login
+#[instrument(skip(state))]
 async fn login_handler(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<AuthResponse>, AppError> {
     let user = sqlx::query!(
         r#"SELECT id, email, password_hash, role FROM users WHERE email = $1"#,
         req.email,
     )
     .fetch_optional(&state.pool)
-    .await
-    .map_err(|_| make_400("Database error"))?
-    .ok_or_else(|| make_401("Invalid email or password"))?;
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Invalid email or password"))?;
 
     if !verify_password(&req.password, &user.password_hash) {
-        return Err(make_401("Invalid email or password"));
+        return Err(AppError::Unauthorized("Invalid email or password"));
     }
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
