@@ -3,17 +3,22 @@ pub mod cache;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod metrics;
 pub mod models;
 pub mod routes;
 
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{Router, http::HeaderName, routing::get};
 use routes::{health, tasks};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tower_governor::{
     GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
+};
+use tower_http::{
+    request_id::{MakeRequestUuid, SetRequestIdLayer},
+    trace::TraceLayer,
 };
 
 use crate::{auth::auth_routes, models::TaskAssignedEvent};
@@ -26,6 +31,11 @@ pub struct AppState {
     pub redis_con: redis::aio::MultiplexedConnection,
 }
 
+/// Prometheus `/metrics` handler.
+async fn metrics_handler() -> String {
+    crate::metrics::render()
+}
+
 pub fn create_app(state: AppState) -> Router {
     let governor_conf = GovernorConfigBuilder::default()
         .key_extractor(GlobalKeyExtractor)
@@ -33,6 +43,37 @@ pub fn create_app(state: AppState) -> Router {
         .burst_size(20)
         .finish()
         .expect("Failed to build rate limiter config");
+
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &axum::http::Request<axum::body::Body>| {
+            let request_id = req
+                .headers()
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("unknown");
+            tracing::info_span!(
+                "http_request",
+                method = %req.method(),
+                uri = %req.uri(),
+                request_id = %request_id,
+            )
+        })
+        .on_response(
+            |response: &axum::http::Response<axum::body::Body>,
+             latency: std::time::Duration,
+             _span: &tracing::Span| {
+                tracing::info!(status = %response.status(), "response sent");
+                crate::metrics::record(
+                    "http",
+                    "/",
+                    response.status().as_u16(),
+                    latency.as_secs_f64(),
+                );
+            },
+        );
+
+    let request_id_layer =
+        SetRequestIdLayer::new(HeaderName::from_static("x-request-id"), MakeRequestUuid);
 
     Router::new()
         .route("/health", get(health))
@@ -44,8 +85,11 @@ pub fn create_app(state: AppState) -> Router {
                 .patch(tasks::update)
                 .delete(tasks::delete),
         )
+        .route("/metrics", get(metrics_handler))
         .with_state(state)
         .layer(GovernorLayer::new(Arc::new(governor_conf)))
+        .layer(trace_layer)
+        .layer(request_id_layer)
 }
 
 pub async fn task_notification_worker(mut receiver: mpsc::Receiver<TaskAssignedEvent>) {
