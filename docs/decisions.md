@@ -21,8 +21,8 @@ Record each significant decision here. One or two sentences is enough. The goal 
 
 ### Task runner
 
-- Decision: `justfile`.
-- Why: `just` is purpose-built for project tasks (dependencies, recipe args, shell completion). `mise` _can_ run tasks, but that is a secondary feature; its main job is toolchain version management. If you already use `mise` everywhere and want one less tool, `mise.toml` tasks are perfectly valid — just less common in Rust projects.
+- Decision: `mise` tasks in `mise.toml`.
+- Why: mise tasks have matured into a full task-runner system — dependencies, typed arguments with autocomplete, aliases, per-task env vars, sandboxing, interactive picker, and dep graph visualization. Since mise is already the toolchain manager (`[tools]`), using it for tasks removes `justfile` entirely: one file, one tool, zero loss. `just` was the original pick when mise's task system was still secondary, but it no longer is.
 
 ### HTTP client
 

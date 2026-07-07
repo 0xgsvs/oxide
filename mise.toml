@@ -1,0 +1,61 @@
+[tools]
+"cargo:cargo-nextest" = "latest"
+"cargo:sqlx-cli" = "latest"
+mold = "latest"
+oha = "latest"
+sccache = "latest"
+
+[tasks.setup]
+description = "Start Docker services"
+run = "docker compose up -d"
+
+[tasks.dev]
+description = "Run the CLI (debug mode)"
+run = "cargo run"
+
+[tasks.release]
+description = "Run the CLI (release mode)"
+run = "cargo run --release"
+
+[tasks.test]
+description = "Run tests with nextest"
+run = "cargo nextest run --no-tests=pass"
+
+[tasks.fmt]
+description = "Format code with rustfmt"
+run = "cargo fmt"
+
+[tasks.lint]
+description = "Lint with clippy"
+run = "cargo clippy -- -D warnings"
+
+[tasks.check]
+description = "Check code compiles"
+run = "cargo check"
+
+[tasks.ready]
+description = "Format and lint the codebase"
+depends = ["fmt", "lint"]
+
+[tasks.ci]
+description = "Run full CI pipeline"
+run = [
+  { task = "ready" },
+  { task = "check" },
+  { task = "test" },
+]
+
+[shell_alias]
+setup = "mise run setup"
+dev = "mise run dev"
+release = "mise run release"
+nextest = "mise run test"
+fmt = "mise run fmt"
+lint = "mise run lint"
+ready = "mise run ready"
+check = "mise run check"
+ci = "mise run ci"
+
+[settings]
+jobs=1
+task.output = "interleave"
