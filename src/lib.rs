@@ -5,23 +5,19 @@ pub mod db;
 pub mod error;
 pub mod metrics;
 pub mod models;
+pub mod ratelimit;
 pub mod routes;
 
-use std::sync::Arc;
-
-use axum::{Router, http::HeaderName, routing::get};
+use axum::{Router, http::HeaderName, middleware, routing::get};
 use routes::{health, tasks};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
-use tower_governor::{
-    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
-};
 use tower_http::{
     request_id::{MakeRequestUuid, SetRequestIdLayer},
     trace::TraceLayer,
 };
 
-use crate::{auth::auth_routes, models::TaskAssignedEvent};
+use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_middleware};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -29,6 +25,7 @@ pub struct AppState {
     pub jwt_secret: String,
     pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
     pub redis_con: redis::aio::MultiplexedConnection,
+    pub rate_limit_enabled: bool,
 }
 
 /// Prometheus `/metrics` handler.
@@ -37,13 +34,6 @@ async fn metrics_handler() -> String {
 }
 
 pub fn create_app(state: AppState) -> Router {
-    let governor_conf = GovernorConfigBuilder::default()
-        .key_extractor(GlobalKeyExtractor)
-        .per_second(10)
-        .burst_size(20)
-        .finish()
-        .expect("Failed to build rate limiter config");
-
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &axum::http::Request<axum::body::Body>| {
             let request_id = req
@@ -75,6 +65,8 @@ pub fn create_app(state: AppState) -> Router {
     let request_id_layer =
         SetRequestIdLayer::new(HeaderName::from_static("x-request-id"), MakeRequestUuid);
 
+    let state_for_middleware = state.clone();
+
     Router::new()
         .route("/health", get(health))
         .merge(auth_routes())
@@ -87,7 +79,10 @@ pub fn create_app(state: AppState) -> Router {
         )
         .route("/metrics", get(metrics_handler))
         .with_state(state)
-        .layer(GovernorLayer::new(Arc::new(governor_conf)))
+        .layer(middleware::from_fn_with_state(
+            state_for_middleware,
+            rate_limit_middleware,
+        ))
         .layer(trace_layer)
         .layer(request_id_layer)
 }
