@@ -16,8 +16,28 @@ use tower_http::{
     request_id::{MakeRequestUuid, SetRequestIdLayer},
     trace::TraceLayer,
 };
+use utoipa::OpenApi;
 
 use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_middleware};
+
+#[derive(utoipa::OpenApi)]
+#[openapi(
+    info(title = "Oxide API", description = "Multi-tenant task tracker", version = "0.1.0"),
+    components(schemas(
+        crate::models::Task,
+        crate::models::CreateTaskRequest,
+        crate::models::UpdateTaskRequest,
+        crate::models::AuthResponse,
+        crate::models::LoginRequest,
+        crate::models::RegisterRequest,
+        crate::models::ErrorResponse,
+    )),
+    tags(
+        (name = "tasks", description = "Task management"),
+        (name = "auth", description = "Authentication"),
+    ),
+)]
+pub struct ApiDoc;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -68,6 +88,10 @@ pub fn create_app(state: AppState) -> Router {
     let state_for_middleware = state.clone();
 
     Router::new()
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", ApiDoc::openapi()),
+        )
         .route("/health", get(health))
         .merge(auth_routes())
         .route("/tasks", get(tasks::list).post(tasks::create))

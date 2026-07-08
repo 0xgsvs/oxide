@@ -9,7 +9,10 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::{AppState, error::AppError};
+use crate::{
+    error::AppError,
+    models::{AuthResponse, LoginRequest, RegisterRequest},
+};
 
 /// Claims stored in the JWT.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,40 +24,17 @@ pub struct Claims {
     pub iat: usize,
 }
 
-/// Request body for login.
-#[derive(Debug, Deserialize)]
-pub struct LoginRequest {
-    pub email: String,
-    pub password: String,
-}
-
-/// Response returned after successful authentication.
-#[derive(Serialize)]
-pub struct AuthResponse {
-    pub token: String,
-    pub user_id: i32,
-    pub email: String,
-    pub role: String,
-}
-
-/// Request body for registration.
-#[derive(Debug, Deserialize)]
-pub struct RegisterRequest {
-    pub email: String,
-    pub password: String,
-    pub role: Option<String>,
-}
-
 /// Extractor that validates a JWT from the `Authorization` header.
+#[derive(Debug)]
 pub struct AuthUser(pub Claims);
 
-impl FromRequestParts<AppState> for AuthUser {
+impl FromRequestParts<crate::AppState> for AuthUser {
     type Rejection = AppError;
 
     #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(
         parts: &mut Parts,
-        state: &AppState,
+        state: &crate::AppState,
     ) -> Result<Self, Self::Rejection> {
         let token = parts
             .headers
@@ -121,8 +101,8 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
 
 /// POST /auth/register
 #[instrument(skip(state))]
-async fn register_handler(
-    State(state): State<AppState>,
+pub async fn register_handler(
+    State(state): State<crate::AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
     if req.email.is_empty() || req.password.is_empty() {
@@ -157,8 +137,8 @@ async fn register_handler(
 
 /// POST /auth/login
 #[instrument(skip(state))]
-async fn login_handler(
-    State(state): State<AppState>,
+pub async fn login_handler(
+    State(state): State<crate::AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
     let user = sqlx::query!(
@@ -183,7 +163,7 @@ async fn login_handler(
 }
 
 /// Build the auth routes.
-pub fn auth_routes() -> Router<AppState> {
+pub fn auth_routes() -> Router<crate::AppState> {
     Router::new()
         .route("/auth/register", post(register_handler))
         .route("/auth/login", post(login_handler))

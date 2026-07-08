@@ -8,7 +8,6 @@ use tracing::instrument;
 use validator::Validate;
 
 use crate::{
-    AppState,
     auth::AuthUser,
     cache,
     error::AppError,
@@ -25,7 +24,7 @@ pub struct ListTasksQuery {
 #[instrument(skip(state, req), fields(task.title = %req.title))]
 pub async fn create(
     AuthUser(claims): AuthUser,
-    State(state): State<AppState>,
+    State(state): State<crate::AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> Result<Json<Task>, AppError> {
     req.validate().map_err(AppError::Validation)?;
@@ -66,7 +65,7 @@ pub async fn create(
 #[instrument(skip(state))]
 pub async fn list(
     AuthUser(_): AuthUser,
-    State(state): State<AppState>,
+    State(state): State<crate::AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<Vec<Task>>, AppError> {
     let limit = query.limit.unwrap_or(20);
@@ -112,7 +111,7 @@ pub async fn list(
 #[instrument(skip(state))]
 pub async fn get_by_id(
     AuthUser(_): AuthUser,
-    State(state): State<AppState>,
+    State(state): State<crate::AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<Task>, AppError> {
     let cache_key = cache::task_key(id);
@@ -127,11 +126,8 @@ pub async fn get_by_id(
 
     let task = sqlx::query_as!(
         Task,
-        r#"
-        SELECT id, workspace_id, title, description, status, assignee_id, created_by
-        FROM tasks
-        WHERE id = $1
-        "#,
+        r#"SELECT id, workspace_id, title, description, status, assignee_id, created_by
+        FROM tasks WHERE id = $1"#,
         id
     )
     .fetch_optional(&state.pool)
@@ -155,7 +151,7 @@ pub async fn get_by_id(
 #[instrument(skip(state, req))]
 pub async fn update(
     AuthUser(_): AuthUser,
-    State(state): State<AppState>,
+    State(state): State<crate::AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<Task>, AppError> {
@@ -170,8 +166,7 @@ pub async fn update(
     let task = sqlx::query_as!(
         Task,
         r#"
-        UPDATE tasks
-        SET
+        UPDATE tasks SET
             title = COALESCE($2, title),
             description = COALESCE($3, description),
             status = COALESCE($4, status),
@@ -210,7 +205,7 @@ pub async fn update(
 #[instrument(skip(state))]
 pub async fn delete(
     AuthUser(_): AuthUser,
-    State(state): State<AppState>,
+    State(state): State<crate::AppState>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
