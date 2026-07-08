@@ -7,25 +7,22 @@ const TASK_KEY_PREFIX: &str = "task:";
 
 /// Set a cache entry with a TTL.
 pub async fn set_string(con: &mut MultiplexedConnection, key: &str, value: &str, ttl: Duration) {
-    let mut con = con.clone();
     let _: Result<(), _> = redis::cmd("SET")
         .arg(key)
         .arg(value)
         .arg("EX")
         .arg(ttl.as_secs())
-        .query_async(&mut con)
+        .query_async(con)
         .await;
 }
 
 /// Get a cache entry. Returns `None` if missing.
 pub async fn get_string(con: &mut MultiplexedConnection, key: &str) -> Option<String> {
-    let mut con = con.clone();
     con.get(key).await.ok()
 }
 
 /// Delete one or more cache keys.
 pub async fn del(con: &mut MultiplexedConnection, keys: &[&str]) {
-    let mut con = con.clone();
     let _: Result<(), _> = con.del(keys).await;
 }
 
