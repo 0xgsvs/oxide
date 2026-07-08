@@ -1378,7 +1378,6 @@ dependencies = [
  "chrono",
  "dotenvy",
  "jsonwebtoken",
- "once_cell",
  "prometheus",
  "redis",
  "serde",
