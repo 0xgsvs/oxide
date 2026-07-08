@@ -93,11 +93,9 @@ Each requirement from the brief becomes a module you implement yourself:
 
 ### Phase 6: Production + Deployment
 
-- [ ] Dockerize the service with multi-stage build.
-- [ ] Use environment-based config (`dotenvy` / `.env`).
-- [ ] Set up GitHub Actions CI: fmt, clippy, test, build image.
-- [ ] Deploy to Fly.io, Render, or a small VPS.
-- [ ] Add a `docs/runbook.md` for common incidents.
+- [x] Set up GitHub Actions CI: fmt, clippy, test.
+- [x] Add a `docs/runbook.md` for common incidents.
+- [ ] Dockerize the service with multi-stage build (pending Dockerfile exercise).
 
 **Checkpoint:** Service is live and reachable over HTTPS.
 
@@ -140,10 +138,17 @@ oxide/
 ├── docs/
 │   ├── decisions.md         # why each tool was chosen
 │   └── database.md          # database and redis setup guide
+├── Cargo.toml
 ├── compose.yml              # PostgreSQL (port 5433) + Redis
+├── docs/
+│   ├── decisions.md         # why each tool was chosen
+│   ├── database.md          # database and redis setup guide
+│   └── runbook.md           # common issues and fixes
 ├── .env                     # DATABASE_URL, JWT_SECRET, REDIS_URL
 ├── .gitignore
-├── Cargo.toml
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # GitHub Actions
 ├── mise.toml              # task runner config
 └── README.md
 ```
