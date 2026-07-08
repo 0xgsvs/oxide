@@ -91,11 +91,12 @@ Each requirement from the brief becomes a module you implement yourself:
 
 **Checkpoint:** You can trace a single request through logs by ID. `/metrics` exposes HTTP and process metrics.
 
-### Phase 6: Production + Deployment
+### Phase 6: Production + Deployment (local only)
 
-- [x] Set up GitHub Actions CI: fmt, clippy, test.
 - [x] Add a `docs/runbook.md` for common incidents.
-- [ ] Dockerize the service with multi-stage build (pending Dockerfile exercise).
+- [ ] Dockerize — skipped (no deployment target).
+- [ ] CI pipeline — skipped (no deployment target).
+- [ ] Deploy — skipped (this is a learning project).
 
 **Checkpoint:** Service is live and reachable over HTTPS.
 
@@ -135,10 +136,6 @@ oxide/
 ├── migrations/              # SQLx reversible migrations
 │   ├── ..._initial_schema.up.sql
 │   └── ..._initial_schema.down.sql
-├── docs/
-│   ├── decisions.md         # why each tool was chosen
-│   └── database.md          # database and redis setup guide
-├── Cargo.toml
 ├── compose.yml              # PostgreSQL (port 5433) + Redis
 ├── docs/
 │   ├── decisions.md         # why each tool was chosen
@@ -146,9 +143,6 @@ oxide/
 │   └── runbook.md           # common issues and fixes
 ├── .env                     # DATABASE_URL, JWT_SECRET, REDIS_URL
 ├── .gitignore
-├── .github/
-│   └── workflows/
-│       └── ci.yml           # GitHub Actions
 ├── mise.toml              # task runner config
 └── README.md
 ```
