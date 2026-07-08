@@ -83,8 +83,19 @@ pub async fn rate_limit_middleware(
         format!("ratelimit:ip:{}", ip)
     };
 
+    let (max_reqs, window) = {
+        let path = request.uri().path();
+        if path.starts_with("/auth/register") {
+            (20u64, 3600u64) // 20 per hour — accommodates org onboarding
+        } else if path.starts_with("/auth/login") {
+            (30u64, 60u64) // 30 per minute — handles office NAT bursts
+        } else {
+            (60u64, 60u64) // 60 per minute — per-user for authenticated, per-IP for anonymous
+        }
+    };
+
     let mut con = state.redis_con.clone();
-    if !check_rate_limit(&mut con, &key, 60, 60).await {
+    if !check_rate_limit(&mut con, &key, max_reqs, window).await {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "Rate limit exceeded. Try again later."})),

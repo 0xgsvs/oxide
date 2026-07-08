@@ -1,4 +1,4 @@
-use std::env;
+use std::env::var;
 
 use dotenvy::dotenv;
 
@@ -18,8 +18,8 @@ pub fn load() -> Config {
     dotenv().ok();
 
     Config {
-        database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
-        jwt_secret: env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
-        redis_url: env::var("REDIS_URL").expect("REDIS_URL must be set"),
+        database_url: var("DATABASE_URL").expect("DATABASE_URL must be set"),
+        jwt_secret: var("JWT_SECRET").expect("JWT_SECRET must be set"),
+        redis_url: var("REDIS_URL").expect("REDIS_URL must be set"),
     }
 }

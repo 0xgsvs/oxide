@@ -1,15 +1,20 @@
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
+};
 use axum::{
     Json, Router,
     extract::{FromRequestParts, State},
     http::request::Parts,
     routing::post,
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::{
+    AppState,
     error::AppError,
     models::{AuthResponse, ErrorResponse, LoginRequest, RegisterRequest},
 };
@@ -28,13 +33,13 @@ pub struct Claims {
 #[derive(Debug)]
 pub struct AuthUser(pub Claims);
 
-impl FromRequestParts<crate::AppState> for AuthUser {
+impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
     #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(
         parts: &mut Parts,
-        state: &crate::AppState,
+        state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let token = parts
             .headers
@@ -57,9 +62,7 @@ impl FromRequestParts<crate::AppState> for AuthUser {
 /// Hash a password using Argon2.
 #[must_use]
 pub fn hash_password(password: &str) -> String {
-    use argon2::password_hash::PasswordHasher;
-
-    let argon2 = argon2::Argon2::default();
+    let argon2 = Argon2::default();
     argon2
         .hash_password(password.as_bytes())
         .expect("Failed to hash password")
@@ -69,12 +72,10 @@ pub fn hash_password(password: &str) -> String {
 /// Verify a password against an Argon2 hash. Returns `true` if valid.
 #[must_use]
 pub fn verify_password(password: &str, hash: &str) -> bool {
-    use argon2::password_hash::{PasswordVerifier, phc::PasswordHash};
-
     let Ok(parsed_hash) = PasswordHash::new(hash) else {
         return false;
     };
-    let argon2 = argon2::Argon2::default();
+    let argon2 = Argon2::default();
     argon2
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok()
@@ -88,7 +89,7 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
         email: email.to_string(),
         role: role.to_string(),
         iat: now.timestamp() as usize,
-        exp: (now + chrono::Duration::hours(24)).timestamp() as usize,
+        exp: (now + Duration::hours(24)).timestamp() as usize,
     };
 
     encode(

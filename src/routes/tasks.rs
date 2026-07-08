@@ -32,7 +32,7 @@ pub struct ListTasksQuery {
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(
-        ("bearer_auth" = [])
+        ("auth" = [])
     ),
     tag = "tasks",
 )]
@@ -87,7 +87,7 @@ pub async fn create(
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(
-        ("bearer_auth" = [])
+        ("auth" = [])
     ),
     tag = "tasks",
 )]
@@ -147,7 +147,7 @@ pub async fn list(
         (status = 404, description = "Not found", body = ErrorResponse),
     ),
     security(
-        ("bearer_auth" = [])
+        ("auth" = [])
     ),
     tag = "tasks",
 )]
@@ -203,7 +203,7 @@ pub async fn get_by_id(
         (status = 404, description = "Not found", body = ErrorResponse),
     ),
     security(
-        ("bearer_auth" = [])
+        ("auth" = [])
     ),
     tag = "tasks",
 )]
@@ -271,7 +271,7 @@ pub async fn update(
         (status = 404, description = "Not found", body = ErrorResponse),
     ),
     security(
-        ("bearer_auth" = [])
+        ("auth" = [])
     ),
     tag = "tasks",
 )]
