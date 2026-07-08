@@ -41,6 +41,11 @@ impl FromRequestParts<AppState> for AuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // If the rate-limit middleware already decoded the JWT, reuse it.
+        if let Some(claims) = parts.extensions.get::<Claims>() {
+            return Ok(AuthUser(claims.clone()));
+        }
+
         let token = parts
             .headers
             .get("Authorization")

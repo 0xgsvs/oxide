@@ -36,47 +36,47 @@ async fn check_rate_limit(
     }
 }
 
-/// Extract user ID from Authorization header without the full AuthUser extractor.
-fn extract_user_id(request: &axum::http::Request<Body>, jwt_secret: &str) -> Option<i32> {
-    let token = request
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))?;
-
-    let token_data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(jwt_secret.as_bytes()),
-        &Validation::default(),
-    )
-    .ok()?;
-
-    Some(token_data.claims.sub)
-}
-
 /// Axum middleware for per-user rate limiting.
 pub async fn rate_limit_middleware(
     State(state): State<AppState>,
-    request: axum::http::Request<Body>,
+    mut request: axum::http::Request<Body>,
     next: Next,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let key = if let Some(uid) = extract_user_id(&request, &state.jwt_secret) {
-        format!("ratelimit:user:{uid}")
-    } else {
-        let ip = request
+    let key = {
+        let jwt_secret = &state.jwt_secret;
+        let claims = request
             .headers()
-            .get("x-forwarded-for")
+            .get("Authorization")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next().map(str::trim))
-            .map(|s| s.to_string())
-            .or_else(|| {
-                request
-                    .extensions()
-                    .get::<std::net::SocketAddr>()
-                    .map(|addr| addr.ip().to_string())
-            })
-            .unwrap_or_else(|| "unknown".to_string());
-        format!("ratelimit:ip:{}", ip)
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .and_then(|token| {
+                decode::<Claims>(
+                    token,
+                    &DecodingKey::from_secret(jwt_secret.as_bytes()),
+                    &Validation::default(),
+                )
+                .ok()
+            });
+
+        if let Some(token_data) = claims {
+            request.extensions_mut().insert(token_data.claims.clone());
+            format!("ratelimit:user:{}", token_data.claims.sub)
+        } else {
+            let ip = request
+                .headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.split(',').next().map(str::trim))
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    request
+                        .extensions()
+                        .get::<std::net::SocketAddr>()
+                        .map(|addr| addr.ip().to_string())
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            format!("ratelimit:ip:{ip}")
+        }
     };
 
     let (max_reqs, window) = {
