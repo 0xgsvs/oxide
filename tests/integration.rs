@@ -22,9 +22,8 @@ async fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
         jwt_secret: "test-secret".to_string(),
         task_notifier,
         redis_con,
-        rate_limit_enabled: false,
     };
-    (create_app(state), task_receiver)
+    (create_app(state, false), task_receiver)
 }
 
 /// Helper: send a JSON request by cloning the app.

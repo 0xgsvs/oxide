@@ -60,10 +60,6 @@ pub async fn rate_limit_middleware(
     request: axum::http::Request<Body>,
     next: Next,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    if !state.rate_limit_enabled {
-        return Ok(next.run(request).await);
-    }
-
     let key = if let Some(uid) = extract_user_id(&request, &state.jwt_secret) {
         format!("ratelimit:user:{uid}")
     } else {

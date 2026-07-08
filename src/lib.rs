@@ -42,7 +42,6 @@ pub struct AppState {
     pub jwt_secret: String,
     pub task_notifier: Sender<TaskAssignedEvent>,
     pub redis_con: redis::aio::MultiplexedConnection,
-    pub rate_limit_enabled: bool,
 }
 
 #[derive(OpenApi)]
@@ -97,7 +96,7 @@ async fn metrics_handler() -> String {
     metrics::render()
 }
 
-pub fn create_app(state: AppState) -> Router {
+pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &Request<Body>| {
             let request_id = req
@@ -127,9 +126,9 @@ pub fn create_app(state: AppState) -> Router {
     let request_id_layer =
         SetRequestIdLayer::new(HeaderName::from_static("x-request-id"), MakeRequestUuid);
 
-    let state_for_middleware = state.clone();
+    let state_for_rate_limit = state.clone();
 
-    Router::new()
+    let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health))
         .merge(auth_routes())
@@ -137,12 +136,17 @@ pub fn create_app(state: AppState) -> Router {
         .route("/tasks/{id}", get(get_by_id).patch(update).delete(delete))
         .route("/metrics", get(metrics_handler))
         .with_state(state)
-        .layer(middleware::from_fn_with_state(
-            state_for_middleware,
+        .layer(trace_layer)
+        .layer(request_id_layer);
+
+    if enable_rate_limit {
+        router.layer(middleware::from_fn_with_state(
+            state_for_rate_limit,
             rate_limit_middleware,
         ))
-        .layer(trace_layer)
-        .layer(request_id_layer)
+    } else {
+        router
+    }
 }
 
 pub async fn task_notification_worker(mut receiver: Receiver<TaskAssignedEvent>) {

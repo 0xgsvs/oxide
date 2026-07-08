@@ -26,9 +26,8 @@ async fn main() {
         jwt_secret: config.jwt_secret,
         task_notifier,
         redis_con,
-        rate_limit_enabled: true,
     };
-    let app = create_app(state);
+    let app = create_app(state, true);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     info!("listening on: {}", addr);
