@@ -8,25 +8,41 @@ use tracing::instrument;
 use validator::Validate;
 
 use crate::{
+    AppState,
     auth::AuthUser,
     cache,
     error::AppError,
-    models::{CreateTaskRequest, Task, TaskAssignedEvent, UpdateTaskRequest},
+    models::{CreateTaskRequest, ErrorResponse, Task, TaskAssignedEvent, UpdateTaskRequest},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListTasksQuery {
     limit: Option<i64>,
     offset: Option<i64>,
 }
 
 /// Creates a new task.
+#[utoipa::path(
+    post,
+    path = "/tasks",
+    request_body = CreateTaskRequest,
+    responses(
+        (status = 200, description = "Task created successfully", body = Task),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "tasks",
+)]
 #[instrument(skip(state, req), fields(task.title = %req.title))]
 pub async fn create(
-    AuthUser(claims): AuthUser,
-    State(state): State<crate::AppState>,
+    auth: AuthUser,
+    State(state): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> Result<Json<Task>, AppError> {
+    let AuthUser(claims) = auth;
     req.validate().map_err(AppError::Validation)?;
 
     let task = sqlx::query_as!(
@@ -62,10 +78,23 @@ pub async fn create(
 }
 
 /// Lists tasks with optional pagination.
+#[utoipa::path(
+    get,
+    path = "/tasks",
+    params(ListTasksQuery),
+    responses(
+        (status = 200, description = "List of tasks matching query", body = [Task]),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "tasks",
+)]
 #[instrument(skip(state))]
 pub async fn list(
-    AuthUser(_): AuthUser,
-    State(state): State<crate::AppState>,
+    _auth: AuthUser,
+    State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<Vec<Task>>, AppError> {
     let limit = query.limit.unwrap_or(20);
@@ -108,10 +137,24 @@ pub async fn list(
 }
 
 /// Gets a single task by ID.
+#[utoipa::path(
+    get,
+    path = "/tasks/{id}",
+    params(("id" = i32, Path, description = "Task ID")),
+    responses(
+        (status = 200, description = "Task found", body = Task),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "tasks",
+)]
 #[instrument(skip(state))]
 pub async fn get_by_id(
-    AuthUser(_): AuthUser,
-    State(state): State<crate::AppState>,
+    _auth: AuthUser,
+    State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<Task>, AppError> {
     let cache_key = cache::task_key(id);
@@ -148,10 +191,26 @@ pub async fn get_by_id(
 }
 
 /// Updates a task.
+#[utoipa::path(
+    patch,
+    path = "/tasks/{id}",
+    params(("id" = i32, Path, description = "Task ID")),
+    request_body = UpdateTaskRequest,
+    responses(
+        (status = 200, description = "Task updated", body = Task),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "tasks",
+)]
 #[instrument(skip(state, req))]
 pub async fn update(
-    AuthUser(_): AuthUser,
-    State(state): State<crate::AppState>,
+    _auth: AuthUser,
+    State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<Task>, AppError> {
@@ -202,10 +261,24 @@ pub async fn update(
 }
 
 /// Deletes a task by ID.
+#[utoipa::path(
+    delete,
+    path = "/tasks/{id}",
+    params(("id" = i32, Path, description = "Task ID")),
+    responses(
+        (status = 204, description = "Task deleted"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "tasks",
+)]
 #[instrument(skip(state))]
 pub async fn delete(
-    AuthUser(_): AuthUser,
-    State(state): State<crate::AppState>,
+    _auth: AuthUser,
+    State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)

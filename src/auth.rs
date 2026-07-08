@@ -11,7 +11,7 @@ use tracing::instrument;
 
 use crate::{
     error::AppError,
-    models::{AuthResponse, LoginRequest, RegisterRequest},
+    models::{AuthResponse, ErrorResponse, LoginRequest, RegisterRequest},
 };
 
 /// Claims stored in the JWT.
@@ -100,6 +100,17 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
 }
 
 /// POST /auth/register
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "User registered", body = AuthResponse),
+        (status = 400, description = "Invalid input", body = ErrorResponse),
+        (status = 409, description = "Email already exists", body = ErrorResponse),
+    ),
+    tag = "auth",
+)]
 #[instrument(skip(state))]
 pub async fn register_handler(
     State(state): State<crate::AppState>,
@@ -136,6 +147,16 @@ pub async fn register_handler(
 }
 
 /// POST /auth/login
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = AuthResponse),
+        (status = 401, description = "Invalid credentials", body = ErrorResponse),
+    ),
+    tag = "auth",
+)]
 #[instrument(skip(state))]
 pub async fn login_handler(
     State(state): State<crate::AppState>,

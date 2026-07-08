@@ -20,9 +20,27 @@ use utoipa::OpenApi;
 
 use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_middleware};
 
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub jwt_secret: String,
+    pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
+    pub redis_con: redis::aio::MultiplexedConnection,
+    pub rate_limit_enabled: bool,
+}
+
 #[derive(utoipa::OpenApi)]
 #[openapi(
     info(title = "Oxide API", description = "Multi-tenant task tracker", version = "0.1.0"),
+    paths(
+        crate::routes::tasks::create,
+        crate::routes::tasks::list,
+        crate::routes::tasks::get_by_id,
+        crate::routes::tasks::update,
+        crate::routes::tasks::delete,
+        crate::auth::register_handler,
+        crate::auth::login_handler,
+    ),
     components(schemas(
         crate::models::Task,
         crate::models::CreateTaskRequest,
@@ -36,16 +54,26 @@ use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_
         (name = "tasks", description = "Task management"),
         (name = "auth", description = "Authentication"),
     ),
+    modifiers(&SecurityAddon),
 )]
 pub struct ApiDoc;
 
-#[derive(Clone)]
-pub struct AppState {
-    pub pool: PgPool,
-    pub jwt_secret: String,
-    pub task_notifier: mpsc::Sender<TaskAssignedEvent>,
-    pub redis_con: redis::aio::MultiplexedConnection,
-    pub rate_limit_enabled: bool,
+pub struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .build(),
+                ),
+            );
+        }
+    }
 }
 
 /// Prometheus `/metrics` handler.
