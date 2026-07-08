@@ -11,10 +11,11 @@ pub mod routes;
 use std::time::Duration;
 
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
     http::{HeaderName, Request, Response},
     middleware,
+    response::Html,
     routing::get,
 };
 use routes::{
@@ -32,7 +33,6 @@ use utoipa::{
     OpenApi,
     openapi::security::{HttpAuthScheme::Bearer, HttpBuilder, SecurityScheme},
 };
-use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_middleware};
 
@@ -96,6 +96,16 @@ async fn metrics_handler() -> String {
     metrics::render()
 }
 
+/// Serve the OpenAPI spec as JSON.
+async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
+}
+
+/// Serve a minimal Swagger UI page that loads from CDN.
+async fn swagger_ui_page() -> Html<&'static str> {
+    Html(include_str!("swagger-ui.html"))
+}
+
 pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &Request<Body>| {
@@ -129,7 +139,8 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
     let state_for_rate_limit = state.clone();
 
     let router = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .route("/swagger-ui", get(swagger_ui_page))
+        .route("/api-docs/openapi.json", get(openapi_json))
         .route("/health", get(health))
         .merge(auth_routes())
         .route("/tasks", get(list).post(create))
