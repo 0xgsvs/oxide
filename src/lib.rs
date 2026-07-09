@@ -101,9 +101,9 @@ async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }
 
-/// Serve a minimal Swagger UI page that loads from CDN.
-async fn swagger_ui_page() -> Html<&'static str> {
-    Html(include_str!("swagger-ui.html"))
+/// Serve a docs UI page that loads from CDN.
+async fn docs_page() -> Html<&'static str> {
+    Html(include_str!("docs.html"))
 }
 
 pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
@@ -139,7 +139,7 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
     let state_for_rate_limit = state.clone();
 
     let router = Router::new()
-        .route("/swagger-ui", get(swagger_ui_page))
+        .route("/docs", get(docs_page))
         .route("/api-docs/openapi.json", get(openapi_json))
         .route("/health", get(health))
         .merge(auth_routes())
