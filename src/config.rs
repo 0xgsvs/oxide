@@ -6,6 +6,7 @@ pub struct Config {
     pub database_url: String,
     pub jwt_secret: String,
     pub redis_url: String,
+    pub addr: String,
 }
 
 /// Loads configuration from environment variables.
@@ -21,5 +22,6 @@ pub fn load() -> Config {
         database_url: var("DATABASE_URL").expect("DATABASE_URL must be set"),
         jwt_secret: var("JWT_SECRET").expect("JWT_SECRET must be set"),
         redis_url: var("REDIS_URL").expect("REDIS_URL must be set"),
+        addr: var("ADDR").expect("ADDR must be set"),
     }
 }

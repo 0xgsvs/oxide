@@ -29,7 +29,7 @@ async fn main() {
     };
     let app = create_app(state, true);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr: SocketAddr = config.addr.parse().expect("Invalid ADDR");
     info!("listening on: {}", addr);
 
     let listener = TcpListener::bind(addr).await.unwrap();
