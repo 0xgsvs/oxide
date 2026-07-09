@@ -12,6 +12,11 @@ async fn main() {
     let config = config::load();
     let pool = db::create_pool(&config.database_url).await;
 
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run database migrations");
+
     let redis_client = Client::open(config.redis_url).expect("Invalid REDIS_URL");
     let redis_con = redis_client
         .get_multiplexed_async_connection()
