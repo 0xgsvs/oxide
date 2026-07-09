@@ -6,7 +6,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
-  <script id="api-reference" data-url="/api-docs/openapi.json"></script>
+  <div id="app"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  <script>
+    // Restore saved auth token across page refreshes
+    var saved = JSON.parse(localStorage.getItem('oxide_auth') || '{}');
+
+    Scalar.createApiReference('#app', {
+      url: '/api-docs/openapi.json',
+      authentication: saved.token ? {
+        preferredSecurityScheme: 'auth',
+        securitySchemes: {
+          auth: { token: saved.token }
+        }
+      } : undefined,
+      onBeforeRequest: function (_a) {
+        var requestBuilder = _a.requestBuilder;
+        // Persist the bearer token to localStorage after any request
+        var sec = requestBuilder.security;
+        if (sec && sec.length > 0 && sec[0].value) {
+          localStorage.setItem('oxide_auth', JSON.stringify({ token: sec[0].value }));
+        }
+      }
+    });
+  </script>
 </body>
 </html>
