@@ -25,7 +25,10 @@ use routes::{
 use sqlx::PgPool;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tower_http::{
+    catch_panic::CatchPanicLayer,
+    normalize_path::NormalizePathLayer,
     request_id::{MakeRequestUuid, SetRequestIdLayer},
+    sensitive_headers::SetSensitiveRequestHeadersLayer,
     trace::TraceLayer,
 };
 use tracing::{Span, info, info_span};
@@ -148,7 +151,12 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
         .route("/metrics", get(metrics_handler))
         .with_state(state)
         .layer(trace_layer)
-        .layer(request_id_layer);
+        .layer(request_id_layer)
+        .layer(SetSensitiveRequestHeadersLayer::new([
+            HeaderName::from_static("authorization"),
+        ]))
+        .layer(NormalizePathLayer::trim_trailing_slash())
+        .layer(CatchPanicLayer::new());
 
     if enable_rate_limit {
         router.layer(middleware::from_fn_with_state(
