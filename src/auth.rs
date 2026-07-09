@@ -5,7 +5,8 @@ use argon2::{
 use axum::{
     Json, Router,
     extract::{FromRequestParts, State},
-    http::request::Parts,
+    http::{header, request::Parts},
+    response::{IntoResponse, Response},
     routing::post,
 };
 use chrono::{Duration, Utc};
@@ -51,6 +52,18 @@ impl FromRequestParts<AppState> for AuthUser {
             .get("Authorization")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
+            .or_else(|| {
+                parts
+                    .headers
+                    .get("Cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|cookies| {
+                        cookies.split(';').find_map(|c| {
+                            let c = c.trim();
+                            c.strip_prefix("auth_token=")
+                        })
+                    })
+            })
             .ok_or_else(|| AppError::Unauthorized("Missing authorization token"))?;
 
         let token_data = decode::<Claims>(
@@ -121,7 +134,7 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
 pub async fn register_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<RegisterRequest>,
-) -> Result<Json<AuthResponse>, AppError> {
+) -> Result<Response, AppError> {
     if req.email.is_empty() || req.password.is_empty() {
         return Err(AppError::BadRequest("Email and password are required"));
     }
@@ -144,12 +157,20 @@ pub async fn register_handler(
     .map_err(|_| AppError::Conflict("Email already exists"))?;
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
-    Ok(Json(AuthResponse {
+    let cookie = format!(
+        "auth_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
+        token
+    );
+    let mut resp = Json(AuthResponse {
         token,
         user_id: user.id,
         email: user.email,
         role: user.role,
-    }))
+    })
+    .into_response();
+    resp.headers_mut()
+        .insert(header::SET_COOKIE, cookie.parse().unwrap());
+    Ok(resp)
 }
 
 /// POST /auth/login
@@ -167,7 +188,7 @@ pub async fn register_handler(
 pub async fn login_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>, AppError> {
+) -> Result<Response, AppError> {
     let user = sqlx::query!(
         r#"SELECT id, email, password_hash, role FROM users WHERE email = $1"#,
         req.email,
@@ -181,12 +202,20 @@ pub async fn login_handler(
     }
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
-    Ok(Json(AuthResponse {
+    let cookie = format!(
+        "auth_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
+        token
+    );
+    let mut resp = Json(AuthResponse {
         token,
         user_id: user.id,
         email: user.email,
         role: user.role,
-    }))
+    })
+    .into_response();
+    resp.headers_mut()
+        .insert(header::SET_COOKIE, cookie.parse().unwrap());
+    Ok(resp)
 }
 
 /// Build the auth routes.
