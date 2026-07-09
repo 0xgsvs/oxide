@@ -130,7 +130,7 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
     ),
     tag = "auth",
 )]
-#[instrument(skip(state))]
+#[instrument(skip(state, req))]
 pub async fn register_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<RegisterRequest>,
@@ -157,9 +157,14 @@ pub async fn register_handler(
     .map_err(|_| AppError::Conflict("Email already exists"))?;
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
+    const SECURE: &str = if cfg!(debug_assertions) {
+        ""
+    } else {
+        "; Secure"
+    };
     let cookie = format!(
-        "auth_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
-        token
+        "auth_token={}; HttpOnly; Path=/; SameSite=Lax{}; Max-Age=86400",
+        token, SECURE,
     );
     let mut resp = Json(AuthResponse {
         token,
@@ -184,7 +189,7 @@ pub async fn register_handler(
     ),
     tag = "auth",
 )]
-#[instrument(skip(state))]
+#[instrument(skip(state, req))]
 pub async fn login_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<LoginRequest>,
@@ -202,9 +207,14 @@ pub async fn login_handler(
     }
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
+    const SECURE: &str = if cfg!(debug_assertions) {
+        ""
+    } else {
+        "; Secure"
+    };
     let cookie = format!(
-        "auth_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
-        token
+        "auth_token={}; HttpOnly; Path=/; SameSite=Lax{}; Max-Age=86400",
+        token, SECURE,
     );
     let mut resp = Json(AuthResponse {
         token,
