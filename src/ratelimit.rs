@@ -2,6 +2,7 @@ use axum::{
     Json, body::Body, extract::State, http::StatusCode, middleware::Next, response::Response,
 };
 use jsonwebtoken::{DecodingKey, Validation, decode};
+use redis::AsyncCommands;
 use serde_json::json;
 
 use crate::{AppState, auth::Claims};
@@ -15,16 +16,12 @@ async fn check_rate_limit(
     window_secs: u64,
 ) -> bool {
     // Atomic: INCR then conditionally EXPIRE on first hit.
-    let count: Result<i64, redis::RedisError> = redis::cmd("INCR").arg(key).query_async(con).await;
+    let count: Result<i64, redis::RedisError> = con.incr(key, 1).await;
 
     match count {
         Ok(1) => {
             // First request in this window — set expiry.
-            let _: Result<(), _> = redis::cmd("EXPIRE")
-                .arg(key)
-                .arg(window_secs as i64)
-                .query_async(con)
-                .await;
+            let _: Result<(), _> = con.expire(key, window_secs as i64).await;
             true
         }
         Ok(n) if n as u64 <= max_requests => true,

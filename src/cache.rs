@@ -7,13 +7,7 @@ const TASK_KEY_PREFIX: &str = "task:";
 
 /// Set a cache entry with a TTL.
 pub async fn set_string(con: &mut MultiplexedConnection, key: &str, value: &str, ttl: Duration) {
-    let _: Result<(), _> = redis::cmd("SET")
-        .arg(key)
-        .arg(value)
-        .arg("EX")
-        .arg(ttl.as_secs())
-        .query_async(con)
-        .await;
+    let _: Result<(), _> = con.set_ex(key, value, ttl.as_secs()).await;
 }
 
 /// Get a cache entry. Returns `None` if missing.
