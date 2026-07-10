@@ -45,14 +45,16 @@ pub async fn create(
     let AuthUser(claims) = auth;
     req.validate().map_err(AppError::Validation)?;
 
+    // ponytail: workspace derived from auth — no client-supplied workspace_id,
+    // no separate permission check needed.
     let task = sqlx::query_as!(
         Task,
         r#"
         INSERT INTO tasks (workspace_id, title, description, status, assignee_id, created_by)
-        VALUES ($1, $2, $3, 'todo', $4, $5)
+        SELECT id, $1, $2, 'todo', $3, $4
+        FROM workspaces WHERE owner_id = $4
         RETURNING id, workspace_id, title, description, status, assignee_id, created_by
         "#,
-        req.workspace_id,
         req.title,
         req.description,
         req.assignee_id.or(Some(claims.sub)),
@@ -93,13 +95,20 @@ pub async fn create(
 )]
 #[instrument(skip(state))]
 pub async fn list(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<Vec<Task>>, AppError> {
+    let AuthUser(claims) = auth;
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
-    let cache_key = format!("{}:{}:{}", cache::TASK_LIST_KEY, limit, offset);
+    let cache_key = format!(
+        "{}:{}:{}:{}",
+        cache::TASK_LIST_KEY,
+        claims.sub,
+        limit,
+        offset
+    );
 
     let mut con = state.redis_con.clone();
     if let Some(Ok(tasks)) = cache::get_string(&mut con, &cache_key)
@@ -112,11 +121,13 @@ pub async fn list(
     let tasks = sqlx::query_as!(
         Task,
         r#"
-        SELECT id, workspace_id, title, description, status, assignee_id, created_by
-        FROM tasks
-        ORDER BY id
-        LIMIT $1 OFFSET $2
+        SELECT t.id, t.workspace_id, t.title, t.description, t.status, t.assignee_id, t.created_by
+        FROM tasks t
+        JOIN workspaces w ON w.id = t.workspace_id AND w.owner_id = $1
+        ORDER BY t.id
+        LIMIT $2 OFFSET $3
         "#,
+        claims.sub,
         limit,
         offset
     )
@@ -209,7 +220,7 @@ pub async fn get_by_id(
 )]
 #[instrument(skip(state, req))]
 pub async fn update(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
@@ -222,6 +233,7 @@ pub async fn update(
         ));
     }
 
+    let AuthUser(claims) = auth;
     let task = sqlx::query_as!(
         Task,
         r#"
@@ -232,13 +244,15 @@ pub async fn update(
             assignee_id = $5,
             updated_at = NOW()
         WHERE id = $1
+        AND workspace_id IN (SELECT id FROM workspaces WHERE owner_id = $6)
         RETURNING id, workspace_id, title, description, status, assignee_id, created_by
         "#,
         id,
         req.title,
         req.description,
         req.status,
-        req.assignee_id
+        req.assignee_id,
+        claims.sub,
     )
     .fetch_optional(&state.pool)
     .await?
@@ -277,13 +291,19 @@ pub async fn update(
 )]
 #[instrument(skip(state))]
 pub async fn delete(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
-        .execute(&state.pool)
-        .await?;
+    let AuthUser(claims) = auth;
+    let result = sqlx::query!(
+        "DELETE FROM tasks WHERE id = $1 AND workspace_id IN (SELECT id FROM workspaces WHERE \
+         owner_id = $2)",
+        id,
+        claims.sub,
+    )
+    .execute(&state.pool)
+    .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound(format!("Task {id} not found")));

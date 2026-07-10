@@ -156,6 +156,18 @@ pub async fn register_handler(
     .await
     .map_err(|_| AppError::Conflict("Email already exists"))?;
 
+    let workspace = sqlx::query!(
+        r#"
+        INSERT INTO workspaces (name, owner_id)
+        VALUES ($1, $2)
+        RETURNING id
+        "#,
+        format!("{}'s workspace", user.email),
+        user.id,
+    )
+    .fetch_one(&state.pool)
+    .await?;
+
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
     const SECURE: &str = if cfg!(debug_assertions) {
         ""
@@ -171,6 +183,7 @@ pub async fn register_handler(
         user_id: user.id,
         email: user.email,
         role: user.role,
+        workspace_id: workspace.id,
     })
     .into_response();
     resp.headers_mut()
@@ -206,6 +219,17 @@ pub async fn login_handler(
         return Err(AppError::Unauthorized("Invalid email or password"));
     }
 
+    let workspace = sqlx::query!(
+        r#"
+        SELECT id FROM workspaces WHERE owner_id = $1
+        ORDER BY id LIMIT 1
+        "#,
+        user.id,
+    )
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("No workspace found for this user".to_string()))?;
+
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
     const SECURE: &str = if cfg!(debug_assertions) {
         ""
@@ -221,6 +245,7 @@ pub async fn login_handler(
         user_id: user.id,
         email: user.email,
         role: user.role,
+        workspace_id: workspace.id,
     })
     .into_response();
     resp.headers_mut()

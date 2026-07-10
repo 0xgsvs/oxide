@@ -15,7 +15,6 @@ pub struct Task {
 
 #[derive(Deserialize, Serialize, Validate, ToSchema)]
 pub struct CreateTaskRequest {
-    pub workspace_id: i32,
     #[validate(length(min = 1, max = 200))]
     pub title: String,
     pub description: Option<String>,
@@ -53,6 +52,7 @@ pub struct AuthResponse {
     pub user_id: i32,
     pub email: String,
     pub role: String,
+    pub workspace_id: i32,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

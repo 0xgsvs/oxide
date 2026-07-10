@@ -129,33 +129,21 @@ async fn tasks_require_auth(pool: PgPool) {
     let status = request_empty(&app, "GET", "/tasks", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    let (status, _body) = request_json(
-        &app,
-        "POST",
-        "/tasks",
-        json!({"workspace_id": 1, "title": "No auth"}),
-        None,
-    )
-    .await;
+    let (status, _body) =
+        request_json(&app, "POST", "/tasks", json!({"title": "No auth"}), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test]
 async fn create_and_list_tasks(pool: PgPool) {
-    let pool_ref = pool.clone();
     let (app, _rx) = app(pool).await;
     let token = register_user(&app).await;
-
-    sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")
-        .execute(&pool_ref)
-        .await
-        .unwrap();
 
     let (status, body) = request_json(
         &app,
         "POST",
         "/tasks",
-        json!({"workspace_id": 1, "title": "Test task"}),
+        json!({"title": "Test task"}),
         Some(&token),
     )
     .await;
@@ -169,20 +157,14 @@ async fn create_and_list_tasks(pool: PgPool) {
 
 #[sqlx::test]
 async fn create_task_sends_assignment_notification(pool: PgPool) {
-    let pool_ref = pool.clone();
     let (app, mut rx) = app(pool).await;
     let token = register_user(&app).await;
-
-    sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")
-        .execute(&pool_ref)
-        .await
-        .unwrap();
 
     let (status, _body) = request_json(
         &app,
         "POST",
         "/tasks",
-        json!({"workspace_id": 1, "title": "Assigned task", "assignee_id": 1}),
+        json!({"title": "Assigned task", "assignee_id": 1}),
         Some(&token),
     )
     .await;
@@ -194,20 +176,14 @@ async fn create_task_sends_assignment_notification(pool: PgPool) {
 
 #[sqlx::test]
 async fn update_and_delete_task(pool: PgPool) {
-    let pool_ref = pool.clone();
     let (app, _rx) = app(pool).await;
     let token = register_user(&app).await;
-
-    sqlx::query!("INSERT INTO workspaces (name, owner_id) VALUES ('Default', 1)")
-        .execute(&pool_ref)
-        .await
-        .unwrap();
 
     let (status, body) = request_json(
         &app,
         "POST",
         "/tasks",
-        json!({"workspace_id": 1, "title": "Initial task"}),
+        json!({"title": "Initial task"}),
         Some(&token),
     )
     .await;
