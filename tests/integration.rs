@@ -156,6 +156,33 @@ async fn create_and_list_tasks(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn create_task_rejects_whitespace_title(pool: PgPool) {
+    let (app, _rx) = app(pool).await;
+    let token = register_user(&app).await;
+
+    let (status, _body) = request_json(
+        &app,
+        "POST",
+        "/tasks",
+        json!({"title": "   "}),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test]
+async fn create_task_rejects_empty_title(pool: PgPool) {
+    let (app, _rx) = app(pool).await;
+    let token = register_user(&app).await;
+
+    let (status, body) =
+        request_json(&app, "POST", "/tasks", json!({"title": ""}), Some(&token)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "Validation failed");
+}
+
+#[sqlx::test]
 async fn create_task_sends_assignment_notification(pool: PgPool) {
     let (app, mut rx) = app(pool).await;
     let token = register_user(&app).await;

@@ -45,6 +45,10 @@ pub async fn create(
 ) -> Result<Json<Task>, AppError> {
     let AuthUser(claims) = auth;
     req.validate().map_err(AppError::Validation)?;
+    // ponytail: catches whitespace-only titles that #[validate(length(min = 1))] misses
+    if req.title.trim().is_empty() {
+        return Err(AppError::BadRequest("Title cannot be empty"));
+    }
 
     // ponytail: workspace derived from auth — no client-supplied workspace_id,
     // no separate permission check needed.
