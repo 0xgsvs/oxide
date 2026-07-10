@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 
 use oxide::{AppState, config, create_app, db, task_notification_worker};
 use redis::Client;
@@ -32,7 +32,7 @@ async fn main() {
         task_notifier,
         redis_con,
     };
-    let app = create_app(state, true);
+    let app = create_app(state, true, Duration::from_secs(30));
 
     let addr: SocketAddr = config.addr.parse().expect("Invalid ADDR");
     info!("listening on: {}", addr);

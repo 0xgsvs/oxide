@@ -30,6 +30,7 @@ use tower_http::{
     normalize_path::NormalizePathLayer,
     request_id::{MakeRequestUuid, SetRequestIdLayer},
     sensitive_headers::SetSensitiveRequestHeadersLayer,
+    timeout::TimeoutLayer,
     trace::TraceLayer,
 };
 use tracing::{Span, info, info_span};
@@ -125,7 +126,7 @@ async fn metrics_middleware(req: Request<Body>, next: Next) -> impl IntoResponse
     response
 }
 
-pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
+pub fn create_app(state: AppState, enable_rate_limit: bool, timeout: Duration) -> Router {
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &Request<Body>| {
             let request_id = req
@@ -168,7 +169,11 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
         .layer(NormalizePathLayer::trim_trailing_slash())
         .layer(CatchPanicLayer::new())
         .layer(CompressionLayer::new())
-        .layer(middleware::from_fn(metrics_middleware));
+        .layer(middleware::from_fn(metrics_middleware))
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            timeout,
+        ));
 
     if enable_rate_limit {
         router.layer(middleware::from_fn_with_state(

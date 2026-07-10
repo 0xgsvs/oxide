@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     Router,
     body::Body,
@@ -23,7 +25,10 @@ async fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
         task_notifier,
         redis_con,
     };
-    (create_app(state, false), task_receiver)
+    (
+        create_app(state, false, Duration::from_secs(30)),
+        task_receiver,
+    )
 }
 
 /// Helper: send a JSON request by cloning the app.
@@ -286,5 +291,29 @@ async fn compression_gzip_response(pool: PgPool) {
         response.headers().get("content-encoding"),
         Some(&HeaderValue::from_static("gzip")),
         "response should be gzip-compressed when client sends Accept-Encoding: gzip",
+    );
+}
+
+#[tokio::test]
+async fn timeout_layer_fires_on_slow_response() {
+    use tower::{Layer, ServiceExt};
+    use tower_http::timeout::TimeoutLayer;
+
+    let slow_svc = tower::service_fn(|_req: Request<Body>| async move {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        Ok::<_, std::convert::Infallible>(axum::http::Response::new(Body::from("slow")))
+    });
+
+    let svc =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_millis(50))
+            .layer(slow_svc);
+
+    let req = Request::new(Body::empty());
+    let response = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::REQUEST_TIMEOUT,
+        "slow mock service should time out with 408",
     );
 }
