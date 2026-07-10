@@ -109,7 +109,12 @@ Record each significant decision here. One or two sentences is enough. The goal 
 ### Cache keys & TTL
 
 - `task:{id}`: single task, TTL 60s, invalidated on PATCH/DELETE.
-- `tasks:list:{limit}:{offset}`: paginated list, TTL 30s, invalidated on CREATE/PATCH/DELETE.
+- `tasks:list:{uid}:{version}:{limit}:{offset}`: paginated list per user, TTL 30s.
+  - **Versioned key pattern**: each user has a counter (`tasks:list:version:{uid}`) stored in Redis.
+    On any task write (create/update/delete), we `INCR` that counter.
+    The next list read builds the cache key with the new version → cache miss → fresh DB query →
+    cache populated. Old entries become unreachable and expire via their 30s TTL.
+  - `INCR` is O(1) and atomic — no race conditions, no scan-and-delete needed.
 
 ### Infrastructure
 
