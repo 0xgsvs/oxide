@@ -240,3 +240,31 @@ async fn update_and_delete_task(pool: PgPool) {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["message"], "Task deleted");
 }
+
+#[sqlx::test]
+async fn metrics_show_actual_request_path(pool: PgPool) {
+    let (app, _rx) = app(pool).await;
+
+    // Hit health endpoint to generate a metric entry
+    let (status, _) = request_json(&app, "GET", "/health", json!(null), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Read rendered metrics
+    let req = Request::builder()
+        .method("GET")
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let metrics_text = String::from_utf8(bytes.to_vec()).unwrap();
+
+    // Should contain the actual path /health, not a hardcoded "/"
+    assert!(
+        metrics_text.contains("/health"),
+        "metrics should contain the path /health, got:\n{}",
+        metrics_text,
+    );
+}

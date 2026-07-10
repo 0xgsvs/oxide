@@ -8,14 +8,14 @@ pub mod models;
 pub mod ratelimit;
 pub mod routes;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json, Router,
     body::Body,
     http::{HeaderName, Request, Response},
-    middleware,
-    response::Html,
+    middleware::{self, Next},
+    response::{Html, IntoResponse},
     routing::get,
 };
 use routes::{
@@ -109,6 +109,21 @@ async fn docs_page() -> Html<&'static str> {
     Html(include_str!("docs.html"))
 }
 
+/// Axum middleware that records Prometheus metrics for every request.
+async fn metrics_middleware(req: Request<Body>, next: Next) -> impl IntoResponse {
+    let start = Instant::now();
+    let path = req.uri().path().to_string();
+    let method = req.method().to_string();
+    let response = next.run(req).await;
+    metrics::record(
+        &method,
+        &path,
+        response.status().as_u16(),
+        start.elapsed().as_secs_f64(),
+    );
+    response
+}
+
 pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &Request<Body>| {
@@ -126,13 +141,7 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
         })
         .on_response(
             |response: &Response<Body>, latency: Duration, _span: &Span| {
-                info!(status = %response.status(), "response sent");
-                metrics::record(
-                    "http",
-                    "/",
-                    response.status().as_u16(),
-                    latency.as_secs_f64(),
-                );
+                info!(status = %response.status(), latency = ?latency, "response sent");
             },
         );
 
@@ -156,7 +165,8 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
             HeaderName::from_static("authorization"),
         ]))
         .layer(NormalizePathLayer::trim_trailing_slash())
-        .layer(CatchPanicLayer::new());
+        .layer(CatchPanicLayer::new())
+        .layer(middleware::from_fn(metrics_middleware));
 
     if enable_rate_limit {
         router.layer(middleware::from_fn_with_state(
