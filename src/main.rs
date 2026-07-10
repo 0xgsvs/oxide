@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
-use oxide::{AppState, config, create_app, db, task_notification_worker};
+use oxide::{AppState, config, create_app, task_notification_worker};
 use redis::Client;
 use tokio::{net::TcpListener, signal::ctrl_c, spawn, sync::mpsc};
 use tracing::info;
@@ -10,7 +10,9 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let config = config::load();
-    let pool = db::create_pool(&config.database_url).await;
+    let pool = sqlx::PgPool::connect(&config.database_url)
+        .await
+        .expect("Failed to connect to database");
 
     sqlx::migrate!("./migrations")
         .run(&pool)
