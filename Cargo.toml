@@ -41,6 +41,7 @@ tower-http = { version = "0.7.0", features = [
   "catch-panic",
   "sensitive-headers",
   "normalize-path",
+  "compression-gzip",
 ] }
 prometheus = { version = "0.14.0", features = ["process"] }
 utoipa = { version = "5.5.0", features = ["axum_extras", "chrono"] }

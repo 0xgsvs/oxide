@@ -1,7 +1,7 @@
 use axum::{
     Router,
     body::Body,
-    http::{Request, StatusCode},
+    http::{HeaderValue, Request, StatusCode},
 };
 use oxide::{AppState, create_app, models::TaskAssignedEvent};
 use serde_json::json;
@@ -266,5 +266,25 @@ async fn metrics_show_actual_request_path(pool: PgPool) {
         metrics_text.contains("/health"),
         "metrics should contain the path /health, got:\n{}",
         metrics_text,
+    );
+}
+
+#[sqlx::test]
+async fn compression_gzip_response(pool: PgPool) {
+    let (app, _rx) = app(pool).await;
+
+    // /metrics returns a large text body — large enough for CompressionLayer
+    let req = Request::builder()
+        .method("GET")
+        .uri("/metrics")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(
+        response.headers().get("content-encoding"),
+        Some(&HeaderValue::from_static("gzip")),
+        "response should be gzip-compressed when client sends Accept-Encoding: gzip",
     );
 }

@@ -26,6 +26,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tower_http::{
     catch_panic::CatchPanicLayer,
+    compression::CompressionLayer,
     normalize_path::NormalizePathLayer,
     request_id::{MakeRequestUuid, SetRequestIdLayer},
     sensitive_headers::SetSensitiveRequestHeadersLayer,
@@ -166,6 +167,7 @@ pub fn create_app(state: AppState, enable_rate_limit: bool) -> Router {
         ]))
         .layer(NormalizePathLayer::trim_trailing_slash())
         .layer(CatchPanicLayer::new())
+        .layer(CompressionLayer::new())
         .layer(middleware::from_fn(metrics_middleware));
 
     if enable_rate_limit {
