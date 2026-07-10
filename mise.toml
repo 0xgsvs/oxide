@@ -19,7 +19,7 @@ run = "cargo run --release"
 
 [tasks.test]
 description = "Run tests with nextest"
-run = "cargo nextest run --no-tests=pass"
+run = "cargo nextest run --no-tests=pass $@"
 
 [tasks.fmt]
 description = "Format code with rustfmt"
