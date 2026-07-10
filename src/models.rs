@@ -65,7 +65,6 @@ pub struct LoginRequest {
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
-    pub role: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
