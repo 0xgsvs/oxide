@@ -65,6 +65,8 @@ pub async fn create(
     .await?;
 
     let mut con = state.redis_con.clone();
+    // ponytail: deletes literal key "tasks:list" but per-user keys are "tasks:list:{uid}:{limit}:{offset}".
+    // Fix: use SCAN or keep a set of user keys. Low impact now — list TTL is 30s anyway.
     cache::del(&mut con, &[cache::TASK_LIST_KEY]).await;
 
     if let Some(assignee_id) = req.assignee_id {
@@ -124,7 +126,8 @@ pub async fn list(
         r#"
         SELECT t.id, t.workspace_id, t.title, t.description, t.status, t.assignee_id, t.created_by
         FROM tasks t
-        JOIN workspaces w ON w.id = t.workspace_id AND w.owner_id = $1
+        JOIN workspaces w ON w.id = t.workspace_id
+        WHERE w.owner_id = $1 OR t.assignee_id = $1
         ORDER BY t.id
         LIMIT $2 OFFSET $3
         "#,
