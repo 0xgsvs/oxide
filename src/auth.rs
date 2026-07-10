@@ -140,7 +140,10 @@ pub async fn register_handler(
     }
 
     let password_hash = hash_password(&req.password);
-    let role = req.role.as_deref().unwrap_or("member");
+    let role = match req.role.as_deref() {
+        None | Some("member") => "member",
+        Some(_) => return Err(AppError::BadRequest("Only 'member' role is permitted at registration")),
+    };
 
     let user = sqlx::query!(
         r#"
