@@ -118,6 +118,36 @@ pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> Stri
     .expect("Failed to encode JWT")
 }
 
+/// Build an HTTP response with the auth payload and a HttpOnly cookie.
+fn auth_response(
+    token: String,
+    user_id: i32,
+    email: String,
+    role: String,
+    workspace_id: i32,
+) -> Response {
+    const SECURE: &str = if cfg!(debug_assertions) {
+        ""
+    } else {
+        "; Secure"
+    };
+    let cookie = format!(
+        "auth_token={}; HttpOnly; Path=/; SameSite=Lax{}; Max-Age=86400",
+        token, SECURE,
+    );
+    let mut resp = Json(AuthResponse {
+        token,
+        user_id,
+        email,
+        role,
+        workspace_id,
+    })
+    .into_response();
+    resp.headers_mut()
+        .insert(header::SET_COOKIE, cookie.parse().unwrap());
+    resp
+}
+
 /// POST /auth/register
 #[utoipa::path(
     post,
@@ -169,26 +199,13 @@ pub async fn register_handler(
     .await?;
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
-    const SECURE: &str = if cfg!(debug_assertions) {
-        ""
-    } else {
-        "; Secure"
-    };
-    let cookie = format!(
-        "auth_token={}; HttpOnly; Path=/; SameSite=Lax{}; Max-Age=86400",
-        token, SECURE,
-    );
-    let mut resp = Json(AuthResponse {
+    Ok(auth_response(
         token,
-        user_id: user.id,
-        email: user.email,
-        role: user.role,
-        workspace_id: workspace.id,
-    })
-    .into_response();
-    resp.headers_mut()
-        .insert(header::SET_COOKIE, cookie.parse().unwrap());
-    Ok(resp)
+        user.id,
+        user.email,
+        user.role,
+        workspace.id,
+    ))
 }
 
 /// POST /auth/login
@@ -231,26 +248,13 @@ pub async fn login_handler(
     .ok_or_else(|| AppError::NotFound("No workspace found for this user".to_string()))?;
 
     let token = create_token(user.id, &user.email, &user.role, &state.jwt_secret);
-    const SECURE: &str = if cfg!(debug_assertions) {
-        ""
-    } else {
-        "; Secure"
-    };
-    let cookie = format!(
-        "auth_token={}; HttpOnly; Path=/; SameSite=Lax{}; Max-Age=86400",
-        token, SECURE,
-    );
-    let mut resp = Json(AuthResponse {
+    Ok(auth_response(
         token,
-        user_id: user.id,
-        email: user.email,
-        role: user.role,
-        workspace_id: workspace.id,
-    })
-    .into_response();
-    resp.headers_mut()
-        .insert(header::SET_COOKIE, cookie.parse().unwrap());
-    Ok(resp)
+        user.id,
+        user.email,
+        user.role,
+        workspace.id,
+    ))
 }
 
 /// Build the auth routes.
