@@ -34,3 +34,32 @@ pub fn task_key(id: i32) -> String {
 
 /// Build the task-list cache key.
 pub const TASK_LIST_KEY: &str = "tasks:list";
+
+/// Delete all keys matching a prefix using SCAN.
+/// ponytail: SCAN is safe for concurrent use but not atomic.
+/// A concurrent write could sneak in between SCAN and DEL.
+/// Fine for dev — production would use a versioned key pattern.
+pub async fn del_by_prefix(con: &mut MultiplexedConnection, prefix: &str) {
+    let pattern = format!("{prefix}:*");
+    let mut cursor = 0u64;
+    loop {
+        let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(100i32)
+            .query_async(con)
+            .await
+            .unwrap_or((0, vec![]));
+        if !keys.is_empty() {
+            let _: Result<(), _> = con
+                .del(&keys.iter().map(|s| s.as_str()).collect::<Vec<_>>())
+                .await;
+        }
+        cursor = next_cursor;
+        if cursor == 0 {
+            break;
+        }
+    }
+}

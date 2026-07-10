@@ -65,9 +65,7 @@ pub async fn create(
     .await?;
 
     let mut con = state.redis_con.clone();
-    // ponytail: deletes literal key "tasks:list" but per-user keys are "tasks:list:{uid}:{limit}:{offset}".
-    // Fix: use SCAN or keep a set of user keys. Low impact now — list TTL is 30s anyway.
-    cache::del(&mut con, &[cache::TASK_LIST_KEY]).await;
+    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
 
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
@@ -263,7 +261,8 @@ pub async fn update(
     .ok_or_else(|| AppError::NotFound(format!("Task {id} not found")))?;
 
     let mut con = state.redis_con.clone();
-    cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
+    cache::del(&mut con, &[&cache::task_key(id)]).await;
+    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
 
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
@@ -314,7 +313,8 @@ pub async fn delete(
     }
 
     let mut con = state.redis_con.clone();
-    cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
+    cache::del(&mut con, &[&cache::task_key(id)]).await;
+    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
 
     Ok((
         StatusCode::OK,
