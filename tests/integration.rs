@@ -202,6 +202,14 @@ async fn update_and_delete_task(pool: PgPool) {
     assert_eq!(body["title"], "Updated task");
     assert_eq!(body["status"], "in_progress");
 
-    let status = request_empty(&app, "DELETE", &format!("/tasks/{task_id}"), Some(&token)).await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body) = request_json(
+        &app,
+        "DELETE",
+        &format!("/tasks/{task_id}"),
+        json!(null),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["message"], "Task deleted");
 }

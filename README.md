@@ -72,7 +72,7 @@ Each requirement from the brief becomes a module you implement yourself:
 ### Phase 4: Caching + Performance
 
 - [x] Add Redis (`redis` crate, `MultiplexedConnection`).
-- [x] Cache task details (`task:{id}`, 60s TTL) and paginated lists (`tasks:list:{limit}:{offset}`, 30s TTL).
+- [x] Cache task details (`task:{id}`, 60s TTL) and paginated lists (`tasks:list:{uid}:{version}:{limit}:{offset}`, 30s TTL).
 - [x] Implement cache invalidation on create, update, delete.
 - [x] Docker Compose (`compose.yml`) for PostgreSQL + Redis.
 - [x] Benchmark endpoints with `oha` (installed via mise).
@@ -122,7 +122,7 @@ oxide/
 │   ├── lib.rs               # create_app() + Tower layers
 │   ├── config.rs            # env config (DATABASE_URL, JWT_SECRET, REDIS_URL)
 │   ├── auth.rs              # JWT, AuthUser extractor, register/login handlers
-│   ├── cache.rs             # Redis helpers (get/set/del)
+│   ├── cache.rs             # Redis helpers (get/set/del/invalidate, versioned list keys)
 │   ├── db.rs                # PgPool creation
 │   ├── error.rs             # AppError enum + IntoResponse
 │   ├── metrics.rs           # Prometheus counters + histograms
