@@ -65,7 +65,7 @@ pub async fn create(
     .await?;
 
     let mut con = state.redis_con.clone();
-    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
+    cache::invalidate_list_cache(&mut con, claims.sub).await;
 
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
@@ -103,15 +103,10 @@ pub async fn list(
     let AuthUser(claims) = auth;
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
-    let cache_key = format!(
-        "{}:{}:{}:{}",
-        cache::TASK_LIST_KEY,
-        claims.sub,
-        limit,
-        offset
-    );
-
     let mut con = state.redis_con.clone();
+    let version = cache::list_version(&mut con, claims.sub).await;
+    let cache_key = cache::task_list_key(claims.sub, version, limit, offset);
+
     if let Some(Ok(tasks)) = cache::get_string(&mut con, &cache_key)
         .await
         .map(|cached| serde_json::from_str::<Vec<Task>>(&cached))
@@ -262,7 +257,7 @@ pub async fn update(
 
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[&cache::task_key(id)]).await;
-    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
+    cache::invalidate_list_cache(&mut con, claims.sub).await;
 
     if let Some(assignee_id) = req.assignee_id {
         let _ = state
@@ -314,7 +309,7 @@ pub async fn delete(
 
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[&cache::task_key(id)]).await;
-    cache::del_by_prefix(&mut con, cache::TASK_LIST_KEY).await;
+    cache::invalidate_list_cache(&mut con, claims.sub).await;
 
     Ok((
         StatusCode::OK,
