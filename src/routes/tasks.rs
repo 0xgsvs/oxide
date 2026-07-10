@@ -57,7 +57,7 @@ pub async fn create(
         RETURNING id, workspace_id, title, description, status, assignee_id, created_by
         "#,
         req.title,
-        req.description,
+        req.description.unwrap_or_default(),
         req.assignee_id.or(Some(claims.sub)),
         claims.sub,
     )
