@@ -2,6 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    response::IntoResponse,
 };
 use serde::Deserialize;
 use tracing::instrument;
@@ -280,7 +281,7 @@ pub async fn update(
     path = "/tasks/{id}",
     params(("id" = i32, Path, description = "Task ID")),
     responses(
-        (status = 204, description = "Task deleted"),
+        (status = 200, description = "Task deleted", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 404, description = "Not found", body = ErrorResponse),
     ),
@@ -294,7 +295,7 @@ pub async fn delete(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i32>,
-) -> Result<StatusCode, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     let AuthUser(claims) = auth;
     let result = sqlx::query!(
         "DELETE FROM tasks WHERE id = $1 AND workspace_id IN (SELECT id FROM workspaces WHERE \
@@ -312,5 +313,8 @@ pub async fn delete(
     let mut con = state.redis_con.clone();
     cache::del(&mut con, &[&cache::task_key(id), cache::TASK_LIST_KEY]).await;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({"message": "Task deleted"})),
+    ))
 }
