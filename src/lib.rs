@@ -115,7 +115,9 @@ async fn metrics_middleware(req: Request<Body>, next: Next) -> impl IntoResponse
     let start = Instant::now();
     let path = req.uri().path().to_string();
     let method = req.method().to_string();
+    metrics::inc_active();
     let response = next.run(req).await;
+    metrics::dec_active();
     metrics::record(
         &method,
         &path,
