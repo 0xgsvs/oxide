@@ -1,320 +1,228 @@
 # Dependency Audit: Oxide
 
-> Generated 2026-07-08 — analyzes whether each dependency's feature surface is being squeezed.
-
-## Legend
-
-| Icon | Meaning                                                    |
-| ---- | ---------------------------------------------------------- |
-| ✓    | Used well — full value extracted                           |
-| △    | Partial — using core, leaving useful features on the table |
-| ○    | Minimal — barely scratching the surface                    |
-| —    | Single-purpose crate, no meaningful unused surface         |
+| Icon | Meaning                                 |
+| ---- | --------------------------------------- |
+| ✓    | Used well                               |
+| △    | Partial — useful features unused        |
+| ○    | Minimal — barely scratching the surface |
 
 ---
 
-## 1. `axum` 0.8.9 — △ Partial
+### axum v0.8.8 — ✓
 
-**Used:**
-`Json`, `Router`, `State`, `extract::{Path, Query, FromRequestParts}`,
-`http::{StatusCode, Request, Response, HeaderName}`,
-`middleware::{self, from_fn_with_state, Next}`,
-`response::{IntoResponse, Html}`, `routing::{get, post, patch, delete}`,
-`serve`, `body::Body`
+**Used:** Router, Json, extract::State, extract::FromRequestParts, middleware, response::IntoResponse, routing::{get, post}, http::{StatusCode, HeaderName, Request, Response}, body::Body, serve
 
-**Unused (potentially useful):**
-
-| Feature                      | What it replaces / why                                                     |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `response::Sse`              | Real-time task notifications (instead of polling or in-process mpsc)       |
-| `response::Redirect`         | After-login redirects                                                      |
-| `routing::any()`             | Catch-all / fallback routes                                                |
-| `middleware::from_extractor` | Declarative middleware — cleaner than `from_fn_with_state` for simple auth |
-| `extract::Multipart`         | File uploads (schema has `attachments` table)                              |
-| `extract::Form`              | URL-encoded form handling                                                  |
-| `error_handling` module      | Already covered by custom `AppError`                                       |
-
-**Verdict:** Core usage is solid. `Sse` and `Multipart` are the main upgrades when features demand them.
+**Verdict:** Core web framework, full usage of relevant APIs. No configurable features.
 
 ---
 
-## 2. `tokio` 1.52.3 — △ Partial
+### tokio v1.52.3 — ✓
 
-**Used (features):**
-`rt`, `rt-multi-thread`, `macros`, `net`, `signal`, `sync` (mpsc), `time`, `io-util`, `fs`
+**Enabled:** rt, rt-multi-thread, macros, net, signal, sync, time, io-util, fs
 
-**Used (APIs):**
-`tokio::spawn`, `tokio::select!`, `#[tokio::main]`,
-`TcpListener`, `ctrl_c`, `unix::signal`, `mpsc::{channel, Sender, Receiver}`
+**Unused (available):**
 
-**Unused (potentially useful):**
+| Feature   | Why it matters                                       |
+| --------- | ---------------------------------------------------- |
+| `process` | Spawn child processes — not needed for an API server |
 
-| Feature / API                       | Why                                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------------------------ |
-| `sync::broadcast`                   | Fan-out task notifications (mpsc is 1:1, broadcast would support multiple listeners) |
-| `sync::watch`                       | Config reload signals, cache invalidation                                            |
-| `sync::Mutex` (async)               | Mutable shared state held across `.await`                                            |
-| `sync::RwLock`                      | Read-heavy shared state                                                              |
-| `sync::Semaphore`                   | Concurrency cap (max N concurrent DB writes)                                         |
-| `task::JoinSet`                     | Structured dynamic task management                                                   |
-| `task::spawn_blocking`              | **Critical** — `argon2` hashing/verifying currently blocks async threads             |
-| `time::interval`                    | Periodic health checks, housekeeping                                                 |
-| `io::{AsyncReadExt, AsyncWriteExt}` | Raw async I/O if needed                                                              |
-
-**Verdict:** `spawn_blocking` for password hashing is the most impactful miss — blocking the async runtime with CPU-bound work hurts tail latency.
+**Verdict:** Well-tuned. Every enabled feature is used directly or by axum/hyper/sqlx. `fs` is pulled by sqlx migration reading. `io-util` by hyper/axum I/O. Skipped `process` is correct — YAGNI.
 
 ---
 
-## 3. `tower-http` 0.7.0 — ○ Minimal (biggest gap)
+### tracing v0.1.44 — ✓
 
-**Used:** `trace`, `request-id`
+**Used:** info!, error!, info_span!, instrument, Span
 
-**Unused (potentially useful):**
-
-| Feature             | Effort                 | Impact                                                       |
-| ------------------- | ---------------------- | ------------------------------------------------------------ |
-| `cors`              | 1 feature flag + 5 LoC | **P1** — needed for separate frontend origin                 |
-| `compression-gzip`  | 1 flag + 1 layer       | **P1** — smaller JSON payloads                               |
-| `timeout`           | 1 flag + 1 layer       | **P1** — guard against slow requests                         |
-| `catch-panic`       | 1 flag + 1 layer       | **P1** — convert panics to 500s                              |
-| `sensitive-headers` | 1 flag + 1 layer       | **P1** — mask `Authorization` in logs                        |
-| `set-header`        | 1 flag + 1 layer       | security headers (`X-Content-Type-Options`, etc.)            |
-| `limit` (body size) | 1 flag + 1 layer       | protect against large payloads                               |
-| `normalize-path`    | 1 flag + 1 layer       | trailing-slash normalization                                 |
-| `propagate-header`  | 1 flag                 | forward request-id to downstream                             |
-| `metrics`           | 1 flag                 | could replace custom `metrics.rs` with tower-http's built-in |
-
-**Verdict:** Biggest ROI in the entire audit. Currently using 2 of ~24 middleware modules. Adding 5 feature flags (+~10 lines of app code) gives CORS, compression, timeout, panic safety, and log hygiene.
+**Verdict:** Full usage of the macro/instrument surface. No configurable features.
 
 ---
 
-## 4. `sqlx` 0.9.0 — △ Partial
+### tracing-subscriber v0.3.23 — △
 
-**Used (features):** `runtime-tokio`, `tls-rustls`, `postgres`, `migrate`
+**Enabled:** fmt
 
-**Used (APIs):**
-`PgPool`, `PgPool::connect`, `query!`, `query_as!`, `fetch_one`, `fetch_optional`, `fetch_all`, `execute`
+**Unused (beneficial):**
 
-**Unused (potentially useful):**
+| Feature/API  | Why it matters                                                                                                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registry`   | Enables `Registry` + `EnvFilter` for per-module log level control. Currently all tracing is fmt-based with no filtering — debug logs from dependencies (sqlx, axum) always print. |
+| `json`       | Structured JSON logging for production log aggregation (Datadog, Loki, etc.).                                                                                                     |
+| `env-filter` | Dynamic log filtering via `RUST_LOG` env var — lets ops teams turn up/down verbosity without a rebuild.                                                                           |
 
-| Feature / API                                   | Why                                                                                       |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Transaction` (`pool.begin()` / `txn.commit()`) | **P1 correctness** — no endpoint uses transactions. Create/update tasks should be atomic. |
-| `PoolOptions`                                   | Tune max connections, timeouts, etc.                                                      |
-| `Pool::try_acquire`                             | Non-blocking pool check                                                                   |
-| `Acquire` trait                                 | Borrow a connection for multiple operations                                               |
-| `QueryBuilder`                                  | Dynamic query construction for filtered task list                                         |
-| `migrate!` macro                                | Embed migrations in binary                                                                |
-| `query_as_unchecked!`                           | Faster when schema is trusted                                                             |
-
-**Verdict:** Missing transactions is a correctness gap, not a feature gap. Every mutation endpoint should wrap in a transaction.
+**Verdict:** Only `fmt` is enabled — no filtering, no structured output. Adding `env-filter` (enabled by `registry`) is a cheap win for operational debuggability.
 
 ---
 
-## 5. `redis` 1.3.0 — ○ Minimal
+### serde v1.0.228 — ✓
 
-**Used:**
-`Client::open`, `get_multiplexed_async_connection`, `AsyncCommands::{get, del}`,
-`redis::cmd("SET")`, `redis::cmd("INCR")`, `redis::cmd("EXPIRE")`
+**Enabled:** derive
 
-**Unused (potentially useful):**
+**Used:** Serialize, Deserialize derives on 7 types
 
-| Feature / API                            | Why                                                                      |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| `redis::pipe()`                          | **P2** — batch SET + EXPIRE into 1 round trip instead of 2               |
-| `redis::transaction()`                   | Atomic multi-key operations                                              |
-| Pub/Sub                                  | Real-time task notification (replace in-process mpsc with cross-process) |
-| `redis::json`                            | Store/retrieve structured cache data without serde serialization         |
-| `ClusterClient`                          | Redis cluster connectivity                                               |
-| Connection pooling (`ConnectionManager`) | Managed reconnect                                                        |
-
-**Verdict:** Pipelines alone cut Redis round trips in half for cache writes. The custom `set_string` does SET then EXPIRE as two commands.
+**Verdict:** Exactly what derive is for. No useful unused features (alloc/std are for no-std/embedded).
 
 ---
 
-## 6. `chrono` 0.4.45 — ○ Minimal
+### sqlx v0.9.0 — ✓
 
-**Used:** `Duration`, `Utc` (for JWT `iat`/`exp`)
+**Enabled:** runtime-tokio, tls-rustls, postgres, migrate
 
-**Unused (potentially useful):**
+**Used:** PgPool, query!, query_as!, migrate!, Error
 
-| Feature                      | Why                                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `DateTime<Utc>` model fields | **P3** — `Task`, `User` have `TIMESTAMPTZ` columns in DB but Rust models don't read them |
-| `serde` feature              | Enabled but never used on any chrono type                                                |
-| `NaiveDateTime`              | Simpler timezone-naive variant                                                           |
-| `Local`                      | OS-local time display                                                                    |
-| `format` / `parse`           | Date string formatting                                                                   |
-| `TimeDelta`                  | Newtype for `Duration`                                                                   |
-
-**Verdict:** Adding `created_at: DateTime<Utc>` / `updated_at: DateTime<Utc>` to the `Task` model unlocks user-facing timestamps with zero new dependencies.
+**Verdict:** Matched perfectly. Postgres-specific, TLS via rustls, compile-time checked queries, migrations. The `migrate` feature is well used.
 
 ---
 
-## 7. `serde` 1.0.228 — ✓ Used well
+### dotenvy v0.15.7 — ✓
 
-**Used:** `Deserialize`, `Serialize` (derive macros)
+**Used:** dotenv()
 
-**Cosmetic additions (no new features):**
-
-| Attribute                                           | Benefit                   |
-| --------------------------------------------------- | ------------------------- |
-| `#[serde(rename_all = "camelCase")]`                | JS-friendly API responses |
-| `#[serde(skip_serializing_if = "Option::is_none")]` | Tighter JSON              |
-| `#[serde(default)]`                                 | Graceful missing fields   |
-
-**Verdict:** Core value extracted. Attributes are polish.
+**Verdict:** Single-function crate used for its sole purpose. No configurable features.
 
 ---
 
-## 8. `utoipa` 5.5.0 — △ Partial
+### validator — △
 
-**Used:**
-`OpenApi`, `ToSchema`, `#[utoipa::path]`, `IntoParams`,
-`openapi::security::{HttpBuilder, HttpAuthScheme, SecurityScheme}`, `Modify`
+**Enabled:** derive
 
-**Unused (potentially useful):**
+**Unused (beneficial):**
 
-| Feature                     | Why                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `utoipa-swagger-ui` crate   | Self-host Swagger UI (currently loading from CDN — one more dependency to fail) |
-| `ToResponse`                | Shared response schemas                                                         |
-| `utoipa::openapi::response` | Custom response documentation                                                   |
+| Feature/API | Why it matters                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `email`     | Provides `#[validate(email)]` for `RegisterRequest.email` — currently only checking `is_empty`. Catches malformed emails at the API boundary instead of letting garbage into the DB. |
 
-**Verdict:** Consider `utoipa-swagger-ui` to eliminate the CDN dependency for the docs page.
+**Verdict:** Derive is used for `#[derive(Validate)]` on CreateTaskRequest and UpdateTaskRequest. The `email` validation feature would strengthen registration validation.
 
 ---
 
-## 9. `prometheus` 0.14.0 — △ Partial
+### argon2 v0.6.0-rc.8 — ✓
 
-**Used:**
-`CounterVec`, `HistogramVec`, `TextEncoder`, `register_counter_vec!`,
-`register_histogram_vec!`, `gather`
+**Used:** Argon2, PasswordHasher::hash_password, PasswordVerifier::verify_password, PasswordHash
 
-**Unused (potentially useful):**
-
-| Feature                       | Why                                               |
-| ----------------------------- | ------------------------------------------------- |
-| `Gauge`                       | Track in-flight requests, pool size, queue depth  |
-| `process` feature             | **Already enabled** — collects RSS, CPU, FD count |
-| `labels!` macro               | Cleaner label construction                        |
-| `register_counter!` (non-vec) | When no labels needed                             |
-| `push` feature                | Pushgateway integration                           |
-
-**Verdict:** Adding a `Gauge` for concurrent requests is a few lines and gives useful operational insight.
+**Verdict:** Full usage of the password hashing API. No configurable features.
 
 ---
 
-## 10. `validator` 0.20.0 — △ Partial
+### jsonwebtoken v10.4.0 — ✓
 
-**Used:** `Validate` derive, `ValidationErrors`
+**Enabled:** rust_crypto
 
-**Unused (potentially useful):**
+**Unused (available):**
 
-| Rule                          | Where                                                        |
-| ----------------------------- | ------------------------------------------------------------ |
-| `#[validate(email)]`          | `RegisterRequest.email` — currently only checks `is_empty()` |
-| `#[validate(url)]`            | Future task-link fields                                      |
-| `#[validate(custom = "...")]` | Domain-specific validation                                   |
-| `#[validate(nested)]`         | Nested struct validation                                     |
+| Feature   | Why it matters                                                                                                             |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `use_pem` | Parse PEM-encoded RSA/EC keys. Currently using HMAC-SHA (symmetric secret). Only relevant if switching to asymmetric keys. |
 
-**Verdict:** `#[validate(email)]` on `RegisterRequest.email` is a one-line improvement for input quality.
+**Verdict:** `rust_crypto` enables the default crypto backend. `use_pem` is YAGNI currently — HMAC is appropriate for a single-service app. Well used.
 
 ---
 
-## 11. `argon2` 0.6.0-rc.8 — ✓ Used well
+### chrono v0.4.45 — △
 
-**Used:**
-`Argon2::default()`, `PasswordHasher::hash_password`, `PasswordVerifier::verify_password`,
-`PasswordHash::new`
+**Enabled:** serde
 
-**Verdict:** Full flow used. Only concern is that it runs on async threads without `spawn_blocking`.
+**Used:** Utc, Utc::now(), Duration::hours, .timestamp()
 
----
+**Unused (beneficial):**
 
-## 12. `jsonwebtoken` 10.4.0 — △ Partial
+| Feature/API | Why it matters                                                                      |
+| ----------- | ----------------------------------------------------------------------------------- |
+| `clock`     | `Clock` trait for injecting mock time in tests. Currently tests can't control time. |
 
-**Used:** `encode`, `decode`, `Header`, `Validation::default`, `DecodingKey`, `EncodingKey`
-
-**Unused (potentially useful):**
-
-| Feature                            | Why                                            |
-| ---------------------------------- | ---------------------------------------------- |
-| `Validation { leeway: 60, .. }`    | **P2** — clock skew tolerance between services |
-| `Validation::required_spec_claims` | Explicit claim requirements                    |
-| `Algorithm::HS512`                 | Stronger signing than HS256 (default)          |
-| Custom `kid` header                | Key rotation support                           |
-
-**Verdict:** Adding 60s leeway is a two-line production hardening.
+**Verdict:** `serde` enables serde support on DateTime types — needed for JWT claim serialization. No extra runtime features needed.
 
 ---
 
-## 13. `tracing` 0.1.44 / `tracing-subscriber` 0.3.23 — ✓ Used well
+### serde_json v1.0.150 — ✓
 
-**Used:**
-`instrument`, `info`, `info_span`, `error`, `tracing_subscriber::fmt::init`
+**Used:** json!, from_str, to_string, Value
 
-**Unused (potentially useful):**
-
-| Feature                         | Why                                                   |
-| ------------------------------- | ----------------------------------------------------- |
-| `tracing_subscriber::EnvFilter` | **P3** — runtime log-level control (`RUST_LOG=debug`) |
-| JSON layer                      | Structured logging for production log ingestion       |
-| `warn!`, `debug!`, `trace!`     | Granular log levels                                   |
-
-**Verdict:** `EnvFilter` is the standard pattern — currently everything is `info` with no filtering.
+**Verdict:** The JSON operations workhorse. No misused features. The crate has no meaningful feature flags beyond std/default.
 
 ---
 
-## 14. `thiserror` 2.0.18 — ✓ Used well
+### redis v1.3.0 — △
 
-**Used:** `#[derive(Error)]`, `#[error("...")]`, `#[from]`
+**Enabled:** tokio-comp
 
-**Verdict:** Full value.
+**Used:** aio::MultiplexedConnection, AsyncCommands, Client, cmd::INCR, cmd::EXPIRE, set_ex, get, del
 
----
+**Unused (beneficial):**
 
-## 15. `serde_json` 1.0.150 — ✓ Used well
+| Feature/API | Why it matters                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `streams`   | Redis Streams — enables persistent message queues. Could replace the in-memory mpsc channel for `TaskAssignedEvent` with a durable stream that survives restarts. |
+| `script`    | Lua scripting (`EVAL`/`SCRIPT LOAD`) — for atomic multi-key operations without race conditions. Could simplify the versioned cache invalidation pattern.          |
+| `acl`       | Redis 6+ ACL commands — useful if Redis is shared across services.                                                                                                |
 
-**Used:** `json!`, `from_str`, `to_string`, `Value`
-
-**Verdict:** Serializer — no meaningful unused API surface.
-
----
-
-## 16. `dotenvy` 0.15.7 — ✓ Used
-
-**Used:** `dotenv()`
-
-**Verdict:** Single-purpose crate, fully utilized.
+**Verdict:** Current usage is basic key-value + INCR/EXPIRE for rate limiting and cache invalidation. The `streams` feature is the most actionable — it would make task assignment events durable.
 
 ---
 
-## 17. `tower` 0.5.3 (dev) — ✓ Used well
+### thiserror v2.0.18 — ✓
 
-**Used:** `ServiceExt::oneshot` in integration tests.
+**Used:** #[derive(Error)]
 
-**Verdict:** Its job is test utilities. Done.
+**Verdict:** The derive macro is the crate. No configurable features.
+
+---
+
+### tower-http v0.7.0 — ✓
+
+**Enabled:** trace, request-id, catch-panic, sensitive-headers, normalize-path, compression-gzip, timeout
+
+**Unused (beneficial):**
+
+| Feature | Why it matters                                                                                                               |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `limit` | Request body size limit (`RequestBodyLimitLayer`) — prevents large payload attacks. Currently no limit on POST/PATCH bodies. |
+
+**Verdict:** The enabled set is well chosen for an API server — tracing, request tracing, panic safety, path normalization, gzip compression, and timeout. Skipped `limit` is the most notable gap (security hardening). Skipped `compression-br` is reasonable — brotli gives ~20% better compression but adds 200KB+ to binary and more CPU on compress.
+
+---
+
+### prometheus v0.14.0 — ○
+
+**Enabled:** process
+
+**Used:** CounterVec, HistogramVec, TextEncoder, register_counter_vec!, register_histogram_vec!, gather
+
+**Verdict:** Two metric families (request count + duration histogram) is a good start. Unused `protobuf` feature (protobuf exposition format instead of text) is fine — text is standard.
+
+**Potential additions not needing features:**
+
+- `Gauge` for active connections / in-flight requests
+- Request size histogram for insight into payload patterns
+
+These don't need new features, just new metric registrations.
+
+---
+
+### utoipa v5.5.0 — △
+
+**Enabled:** axum_extras, chrono
+
+**Used:** OpenApi derive, ToSchema, IntoParams, Modify trait, openapi::security (HttpAuthScheme, HttpBuilder, SecurityScheme)
+
+**Unused (beneficial):**
+
+| Feature/API                          | Why it matters                                                                                        |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `utoipa-swagger-ui` (separate crate) | Self-hosted Swagger UI instead of loading from CDN. Works offline, no external dependency at runtime. |
+
+**Verdict:** OpenAPI spec generation is fully leveraged — 6 endpoints documented, 6 schema types, Bearer auth, tagging. The `axum_extras` is well used. `utoipa-swagger-ui` is a nice-to-have for air-gapped deployments.
 
 ---
 
 ## Priority Action Board
 
-| Pri | Change                                                                               | Dep                  | Lines                  | Impact                          |
-| --- | ------------------------------------------------------------------------------------ | -------------------- | ---------------------- | ------------------------------- |
-| P1  | Add `cors`, `compression-gzip`, `timeout`, `catch-panic`, `sensitive-headers` layers | `tower-http`         | ~10 app + 5 Cargo.toml | Security + perf + resilience    |
-| P1  | Wrap mutations in `pool.begin()` / `txn.commit()`                                    | `sqlx`               | ~8 per endpoint        | Correctness (no partial writes) |
-| P2  | Use `spawn_blocking` for password hash/verify                                        | `tokio`              | ~5                     | Async runtime health            |
-| P2  | Use `redis::pipe()` for atomic SET+EXPIRE                                            | `redis`              | ~5                     | 50% fewer Redis round trips     |
-| P2  | Add `leeway: 60` to JWT `Validation`                                                 | `jsonwebtoken`       | 2                      | Clock skew tolerance            |
-| P2  | Add `#[validate(email)]` to register request                                         | `validator`          | 1                      | Input quality                   |
-| P3  | Add `created_at`/`updated_at` (chrono) to Task model                                 | `chrono`             | ~8                     | User-facing timestamps          |
-| P3  | Add `EnvFilter`                                                                      | `tracing-subscriber` | ~3                     | Runtime log control             |
-| P3  | Add `Gauge` for in-flight requests                                                   | `prometheus`         | ~5                     | Observability                   |
-| P4  | Swap CDN swagger for `utoipa-swagger-ui`                                             | `utoipa`             | ~5                     | Remove CDN dependency           |
-
----
-
-## Files with `ponytail:` markers
-
-None found in `src/`. No deliberate shortcuts are documented.
+| Pri    | Change                                                                                         | Dep                | LoC | Impact                                                                         |
+| ------ | ---------------------------------------------------------------------------------------------- | ------------------ | --- | ------------------------------------------------------------------------------ |
+| **P1** | Enable `registry` + `env-filter` on tracing-subscriber                                         | tracing-subscriber | ±2  | Production debuggability: control log verbosity via `RUST_LOG` without rebuild |
+| **P2** | Enable `limit` feature on tower-http, add `RequestBodyLimitLayer` (e.g. 1MB)                   | tower-http         | +1  | Security: prevent large payload DoS                                            |
+| **P2** | Add `#[validate(email)]` to `RegisterRequest.email`                                            | validator          | +1  | Catch malformed emails at API boundary                                         |
+| **P3** | Enable `streams` on redis — replace mpsc channel with Redis Streams for task-assignment events | redis              | ~20 | Persistence: task assignments survive process restart                          |
+| **P3** | Add Gauge + request-size histogram to metrics                                                  | prometheus         | +10 | Observability: active connections and payload size distribution                |
+| **P4** | Add `utoipa-swagger-ui` crate for self-hosted docs UI                                          | utoipa             | +3  | Remove CDN dependency, offline-capable                                         |
+| **P4** | Enable `script` on redis for atomic Lua-based cache operations                                 | redis              | ~10 | Simplify invalidation logic with Lua scripts                                   |
