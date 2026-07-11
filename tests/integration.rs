@@ -31,6 +31,24 @@ async fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
     )
 }
 
+/// Create app with rate limiting enabled.
+async fn app_with_rate_limit(pool: PgPool) -> Router {
+    let client = redis::Client::open("redis://127.0.0.1:6379").expect("Invalid REDIS_URL");
+    let redis_con = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Failed to connect to Redis");
+
+    let (task_notifier, _task_receiver) = mpsc::channel(100);
+    let state = AppState {
+        pool,
+        jwt_secret: "test-secret".to_string(),
+        task_notifier,
+        redis_con,
+    };
+    create_app(state, true, Duration::from_secs(30))
+}
+
 /// Helper: send a JSON request by cloning the app.
 async fn request_json(
     app: &Router,
@@ -316,4 +334,57 @@ async fn timeout_layer_fires_on_slow_response() {
         StatusCode::REQUEST_TIMEOUT,
         "slow mock service should time out with 408",
     );
+}
+
+#[sqlx::test]
+async fn rate_limit_blocks_after_max_requests(pool: PgPool) {
+    let app = app_with_rate_limit(pool).await;
+
+    // Use a unique IP per test run so we don't collide with other tests.
+    let test_ip = format!("10.99.99.{}", std::process::id());
+
+    for i in 1..=61 {
+        let req = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .header("x-forwarded-for", &test_ip)
+            .body(Body::empty())
+            .unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        if i <= 60 {
+            assert_eq!(
+                res.status(),
+                StatusCode::OK,
+                "request {i} should be allowed under rate limit",
+            );
+        } else {
+            assert_eq!(
+                res.status(),
+                StatusCode::TOO_MANY_REQUESTS,
+                "request {i} should be blocked by rate limit",
+            );
+        }
+    }
+}
+
+#[sqlx::test]
+async fn rate_limit_applies_per_ip(pool: PgPool) {
+    let app = app_with_rate_limit(pool).await;
+
+    let ip_a = format!("10.99.98.{}", std::process::id());
+    let ip_b = format!("10.99.97.{}", std::process::id());
+
+    // Both IPs should be allowed (each below limit).
+    for _ in 0..60 {
+        for (ip, label) in [(ip_a.as_str(), "A"), (ip_b.as_str(), "B")] {
+            let req = Request::builder()
+                .method("GET")
+                .uri("/health")
+                .header("x-forwarded-for", ip)
+                .body(Body::empty())
+                .unwrap();
+            let res = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK, "IP {label} should be allowed");
+        }
+    }
 }
