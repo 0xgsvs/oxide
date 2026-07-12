@@ -21,7 +21,7 @@ async fn app(pool: PgPool) -> (Router, mpsc::Receiver<TaskAssignedEvent>) {
     let (task_notifier, task_receiver) = mpsc::channel(100);
     let state = AppState {
         pool,
-        jwt_secret: "test-secret".to_string(),
+        jwt_secret: "test-secret".to_string().into(),
         task_notifier,
         redis_con,
     };
@@ -42,7 +42,7 @@ async fn app_with_rate_limit(pool: PgPool) -> Router {
     let (task_notifier, _task_receiver) = mpsc::channel(100);
     let state = AppState {
         pool,
-        jwt_secret: "test-secret".to_string(),
+        jwt_secret: "test-secret".to_string().into(),
         task_notifier,
         redis_con,
     };

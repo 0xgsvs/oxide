@@ -6,21 +6,25 @@ use redis::{AsyncCommands, aio::MultiplexedConnection};
 const TASK_KEY_PREFIX: &str = "task:";
 
 /// Set a cache entry with a TTL.
+#[inline]
 pub async fn set_string(con: &mut MultiplexedConnection, key: &str, value: &str, ttl: Duration) {
     let _: Result<(), _> = con.set_ex(key, value, ttl.as_secs()).await;
 }
 
 /// Get a cache entry. Returns `None` if missing.
+#[inline]
 pub async fn get_string(con: &mut MultiplexedConnection, key: &str) -> Option<String> {
     con.get(key).await.ok()
 }
 
 /// Delete one or more cache keys.
+#[inline]
 pub async fn del(con: &mut MultiplexedConnection, keys: &[&str]) {
     let _: Result<(), _> = con.del(keys).await;
 }
 
 /// Build a task cache key from its ID.
+#[inline]
 #[must_use]
 pub fn task_key(id: i32) -> String {
     format!("{TASK_KEY_PREFIX}{id}")
@@ -46,12 +50,14 @@ pub async fn invalidate_list_cache(con: &mut MultiplexedConnection, user_id: i32
 }
 
 /// Get the current list cache version for a user (defaults to 0).
+#[inline]
 pub async fn list_version(con: &mut MultiplexedConnection, user_id: i32) -> i64 {
     let key = format!("{LIST_VERSION_KEY}:{user_id}");
     con.get(&key).await.ok().unwrap_or(0)
 }
 
 /// Build a versioned task-list cache key.
+#[inline]
 pub fn task_list_key(user_id: i32, version: i64, limit: i64, offset: i64) -> String {
     format!("{TASK_LIST_KEY}:{user_id}:{version}:{limit}:{offset}")
 }

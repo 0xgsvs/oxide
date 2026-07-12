@@ -53,9 +53,13 @@ opt-level = "z"   # Optimize for size (try "s" too, whichever is smaller)
 lto = true        # Fat LTO — biggest size win
 codegen-units = 1 # Single unit = more inlining
 panic = "abort"   # No unwind tables
+debug = 1        # Line tables only — enables profiling release builds
 
 # nightly only: removes panic strings + backtrace infrastructure (breaks some proc-macro build scripts)
 # rustflags = ["-Z", "panic_immediate_abort"]
+
+[profile.dev]
+debug = 0        # 20-40% faster dev builds, we rarely debug this
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }

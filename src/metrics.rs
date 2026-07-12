@@ -31,6 +31,7 @@ static HTTP_REQUEST_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
 });
 
 /// Record a completed request: increment counter and observe duration.
+#[inline]
 pub fn record(method: &str, path: &str, status: u16, duration_secs: f64) {
     let status_group = format!("{}xx", status / 100);
     HTTP_REQUESTS_TOTAL
@@ -42,11 +43,13 @@ pub fn record(method: &str, path: &str, status: u16, duration_secs: f64) {
 }
 
 /// Increment the active-requests gauge.
+#[inline]
 pub fn inc_active() {
     HTTP_ACTIVE_REQUESTS.inc();
 }
 
 /// Decrement the active-requests gauge.
+#[inline]
 pub fn dec_active() {
     HTTP_ACTIVE_REQUESTS.dec();
 }

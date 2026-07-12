@@ -56,7 +56,12 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, json!({"error": msg})),
         };
 
-        tracing::error!(?self, status = ?status, "request failed");
+        // Perf book: client errors are not server failures
+        if status.is_client_error() {
+            tracing::warn!(?self, status = ?status, "request failed");
+        } else {
+            tracing::error!(?self, status = ?status, "request failed");
+        }
         (status, Json(body)).into_response()
     }
 }

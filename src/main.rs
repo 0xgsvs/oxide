@@ -30,7 +30,7 @@ async fn main() {
 
     let state = AppState {
         pool,
-        jwt_secret: config.jwt_secret,
+        jwt_secret: config.jwt_secret.into(), // Arc<str> — zero-cost String conversion
         task_notifier,
         redis_con,
     };

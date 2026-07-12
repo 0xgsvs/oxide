@@ -78,6 +78,7 @@ impl FromRequestParts<AppState> for AuthUser {
 }
 
 /// Hash a password using Argon2.
+#[inline]
 #[must_use]
 pub fn hash_password(password: &str) -> String {
     let argon2 = Argon2::default();
@@ -88,6 +89,7 @@ pub fn hash_password(password: &str) -> String {
 }
 
 /// Verify a password against an Argon2 hash. Returns `true` if valid.
+#[inline]
 #[must_use]
 pub fn verify_password(password: &str, hash: &str) -> bool {
     let Ok(parsed_hash) = PasswordHash::new(hash) else {
@@ -100,6 +102,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 /// Create a JWT for the given user.
+#[inline]
 pub fn create_token(user_id: i32, email: &str, role: &str, secret: &str) -> String {
     let now = Utc::now();
     let claims = Claims {

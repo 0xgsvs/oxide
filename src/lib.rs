@@ -7,7 +7,10 @@ pub mod models;
 pub mod ratelimit;
 pub mod routes;
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Json, Router,
@@ -43,7 +46,7 @@ use crate::{auth::auth_routes, models::TaskAssignedEvent, ratelimit::rate_limit_
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
-    pub jwt_secret: String,
+    pub jwt_secret: Arc<str>, // Perf book: Arc avoids cloning string content when AppState is cloned
     pub task_notifier: Sender<TaskAssignedEvent>,
     pub redis_con: redis::aio::MultiplexedConnection,
 }
@@ -113,6 +116,8 @@ async fn docs_page() -> Html<&'static str> {
 /// Axum middleware that records Prometheus metrics for every request.
 async fn metrics_middleware(req: Request<Body>, next: Next) -> impl IntoResponse {
     let start = Instant::now();
+    // ponytail: .to_string() necessary — req is consumed by next.run() below,
+    // we can't borrow from it after the await point. Two small allocs per request.
     let path = req.uri().path().to_string();
     let method = req.method().to_string();
     metrics::inc_active();
